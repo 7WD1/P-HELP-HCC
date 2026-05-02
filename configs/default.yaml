@@ -1,0 +1,99 @@
+project:
+  name: P-HELP-HCC
+  task: eight_class_hcc_survival
+
+data:
+  target_time_col: overall_survival_months
+  event_col: event
+  label_col: survival_class
+  surgical_strategy_col: surgical_strategy
+  aetiology_col: dominant_aetiology
+  curated_dim: 67
+  agent_state_dim: 46
+  survival_bins_months: [0, 6, 12, 24, 36, 48, 60, 72]
+
+splits:
+  outer_folds: 5
+  inner_val_fraction: 0.2
+  seeds: [42, 123, 2024, 31415, 65537]
+  stratify_on: [survival_class, surgical_strategy, dominant_aetiology]
+
+phase_a:
+  delta_t_months: 1
+  horizon_months: 72
+  d_max_cm: 20.0
+  growth_rate_lognormal_mu: -1.4
+  growth_rate_lognormal_sigma: 0.6
+  afp_alpha_per_month: 0.04
+  afp_beta: 1.8
+  fibrosis_age_rate_per_year: 0.002
+  fibrosis_treatment_bump: 0.015
+  fibrosis_recovery_rate: 0.020
+  child_pugh_feasibility_cap: B
+  process_noise_std: 0.05
+
+phase_c:
+  learners: [logistic, gradient_boosting_or_xgboost, random_forest, mlp]
+  fusion_alpha: 0.60
+  random_forest:
+    n_estimators: 500
+    max_depth: 10
+    class_weight: balanced
+  xgboost:
+    enabled_if_installed: true
+    n_estimators: 500
+    learning_rate: 0.05
+    max_depth: 6
+  gradient_boosting_fallback:
+    n_estimators: 500
+    learning_rate: 0.05
+    max_depth: 3
+  mlp:
+    hidden_dims: [256, 128, 64]
+    dropout: 0.2
+    activation: GELU
+    batch_size: 32
+    epochs: 100
+    patience: 15
+    learning_rate: 0.001
+    weight_decay: 0.0
+    focal_gamma: 1.5
+    class_weights: [1.0, 1.5, 1.7, 2.1, 2.5, 2.7, 2.3, 4.5]
+  clustering:
+    k: 4
+    pca_variance: 0.95
+    init: k-means++
+    n_init: 20
+  counterfactual:
+    actions: [None, Resection, TACE, RFA, Sorafenib, Combo]
+    bootstrap_replicates: 200
+    propensity_gate: [0.05, 0.95]
+    guideline_confidence_threshold: 0.6
+    horizon_months: 72
+    report_horizon_months: 12
+
+phase_e:
+  cox:
+    epochs: 300
+    learning_rate: 0.03
+    l1: 0.001
+    l2: 0.001
+  shap:
+    background_samples: 200
+    fallback_permutation_repeats: 5
+  loss:
+    lambda_cal: 1.0
+    lambda_exp: 0.2
+    lambda_clin: 0.1
+    tanh_kappa: 5.0
+    refresh_epochs: 10
+
+phase_p:
+  soft_error_threshold: 0.18
+  hard_error_threshold: 0.32
+  online_learning_rate: 0.0001
+  proximal_weight: 0.001
+  monitor_window: 30
+  retrain_buffer: 200
+  classification_calibration_mix: 0.5
+
