@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 from sklearn.preprocessing import StandardScaler
@@ -109,7 +109,7 @@ def force_action_in_state(state: np.ndarray, action_index: int) -> np.ndarray:
 
 @dataclass
 class ArtificialSocietyDynamics:
-    """Discrete Phase A rollout with tumor, liver, treatment, and guideline rules."""
+    """Discrete Phase A rollout implementing Eqs.~(2)-(5) of the paper."""
 
     delta_t_months: float = 1.0
     horizon_months: int = 72
@@ -120,14 +120,15 @@ class ArtificialSocietyDynamics:
     fibrosis_treatment_bump: float = 0.015
     fibrosis_recovery_rate: float = 0.020
     process_noise_std: float = 0.05
-    action_effects: np.ndarray = field(
-        default_factory=lambda: np.array([0.00, 0.18, 0.10, 0.14, 0.06, 0.16], dtype=float)
-    )
+    growth_rate_lognormal_mu: float = -1.4
+    growth_rate_lognormal_sigma: float = 0.6
+    cp_max_grade: float = 2.0
+    treatment_policy_weights: np.ndarray | None = None
 
-    def treatment_policy(self, state: np.ndarray, guideline_mask: bool = True) -> np.ndarray:
-        tumor = state[:, SocietyTransformer.block_indices("tumor")]
-        liver = state[:, SocietyTransformer.block_indices("liver")]
-        logits = np.column_stack(
+    def _treatment_logits(self, tumor: np.ndarray, liver: np.ndarray) -> np.ndarray:
+        if self.treatment_policy_weights is not None:
+            return tumor @ self.treatment_policy_weights[:tumor.shape[1]]
+        return np.column_stack(
             [
                 -0.2 * tumor[:, 0] + 0.1 * liver[:, 0],
                 -0.4 * tumor[:, 0] - 0.8 * liver[:, -1],
@@ -137,11 +138,25 @@ class ArtificialSocietyDynamics:
                 0.2 * tumor[:, 0] - 0.1 * liver[:, -1],
             ]
         )
+
+    def treatment_policy(self, state: np.ndarray, guideline_mask: bool = True) -> np.ndarray:
+        tumor = state[:, SocietyTransformer.block_indices("tumor")]
+        liver = state[:, SocietyTransformer.block_indices("liver")]
+        logits = self._treatment_logits(tumor, liver)
         if guideline_mask:
-            infeasible_resection = liver[:, -1] > 1.25
+            cp_proxy = liver[:, -1]
+            infeasible_resection = cp_proxy > self.cp_max_grade
             logits[infeasible_resection, 1] = -1e6
         exp = np.exp(logits - logits.max(axis=1, keepdims=True))
         return exp / np.clip(exp.sum(axis=1, keepdims=True), 1e-12, None)
+
+    def _per_patient_growth_rate(self, n: int, seed: int | None) -> np.ndarray:
+        rng = np.random.default_rng(seed)
+        return rng.lognormal(
+            mean=self.growth_rate_lognormal_mu,
+            sigma=self.growth_rate_lognormal_sigma,
+            size=n,
+        )
 
     def step(self, state: np.ndarray, forced_action: int | None = None, seed: int | None = None) -> np.ndarray:
         out = state.copy()
@@ -154,15 +169,21 @@ class ArtificialSocietyDynamics:
             action = np.argmax(self.treatment_policy(out), axis=1)
         else:
             action = np.full(out.shape[0], forced_action, dtype=int)
-        shrink = self.action_effects[action]
-        diameter_proxy = np.clip(tumor[:, 0] + 2.5, 0.05, self.d_max_cm)
-        growth = diameter_proxy * np.exp(0.03 * (1.0 - np.log(diameter_proxy) / np.log(self.d_max_cm)))
-        tumor[:, 0] = np.clip(growth - shrink, 0.0, self.d_max_cm) - 2.5
-        tumor[:, 2] = self.afp_alpha_per_month * tumor[:, 2] + self.afp_beta * np.log1p(np.clip(tumor[:, 0] + 2.5, 0, None))
+        diameter = np.clip(tumor[:, 0], 0.05, self.d_max_cm)
+        r_i = self._per_patient_growth_rate(out.shape[0], seed)
+        gompertz_growth = diameter * np.exp(
+            r_i * (1.0 - np.log(diameter) / np.log(self.d_max_cm)) * self.delta_t_months
+        )
         loco = np.isin(action, [1, 2, 3])
-        recovery = np.clip(1.0 - 0.1 * np.maximum(liver[:, -1], 0.0), 0.0, 1.0)
+        g_trt = 0.18 * (action == 1) + 0.10 * (action == 2) + 0.14 * (action == 3) + 0.06 * (action == 4) + 0.16 * (action == 5)
+        tumor[:, 0] = np.clip(gompertz_growth - g_trt, 0.0, self.d_max_cm)
+        log_afp_prev = np.log1p(np.clip(tumor[:, 2], 0.0, None))
+        log_diameter_next = np.log(np.clip(tumor[:, 0], 1e-3, None))
+        log_afp_next = self.afp_alpha_per_month * log_afp_prev + self.afp_beta * log_diameter_next
+        tumor[:, 2] = np.expm1(log_afp_next)
         liver[:, -1] = liver[:, -1] + self.fibrosis_age_rate_per_year / 12.0
         liver[:, -1] += self.fibrosis_treatment_bump * loco
+        recovery = np.clip(1.0 - 0.1 * np.maximum(liver[:, -1], 0.0), 0.0, 1.0)
         liver[:, -1] -= self.fibrosis_recovery_rate * recovery
         out[:, tumor_slice] = tumor
         out[:, liver_slice] = liver

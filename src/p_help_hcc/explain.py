@@ -49,8 +49,87 @@ def shap_available() -> bool:
 
 
 def multinomial_brier_loss(proba: np.ndarray, y: np.ndarray) -> float:
+    """Matured-only multinomial Brier score (used as the IPCW fallback)."""
+
     target = np.eye(proba.shape[1])[y]
     return float(np.mean(np.square(proba - target)))
+
+
+def _km_censoring_estimator(times: np.ndarray, events: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Reverse Kaplan-Meier estimator of the censoring distribution G(t)."""
+
+    times = np.asarray(times, dtype=float)
+    events = np.asarray(events, dtype=int)
+    censor_event = (events == 0).astype(float)
+    order = np.argsort(times)
+    sorted_times = times[order]
+    sorted_censor = censor_event[order]
+    unique_times = np.unique(sorted_times)
+    surv = 1.0
+    times_out = [0.0]
+    surv_out = [1.0]
+    for t in unique_times:
+        at_risk = float((sorted_times >= t).sum())
+        if at_risk <= 0:
+            continue
+        d_c = float(sorted_censor[sorted_times == t].sum())
+        if d_c > 0:
+            surv = surv * max(0.0, 1.0 - d_c / at_risk)
+        times_out.append(float(t))
+        surv_out.append(surv)
+    return np.asarray(times_out), np.asarray(surv_out)
+
+
+def _km_lookup(t: float, km_times: np.ndarray, km_surv: np.ndarray) -> float:
+    if len(km_times) == 0:
+        return 1.0
+    idx = np.searchsorted(km_times, t, side="right") - 1
+    idx = max(0, min(idx, len(km_surv) - 1))
+    return float(km_surv[idx])
+
+
+def ipcw_brier_loss(
+    proba: np.ndarray,
+    y: np.ndarray,
+    times: np.ndarray,
+    events: np.ndarray,
+    cutpoints: list[float],
+    *,
+    floor: float = 1e-3,
+) -> float:
+    """IPCW-weighted multinomial Brier score per paper Eq.(13).
+
+    Falls back to ``multinomial_brier_loss`` if censoring weights drop below
+    the numerical floor on any fold.
+    """
+
+    proba = np.asarray(proba, dtype=float)
+    y = np.asarray(y, dtype=int)
+    times = np.asarray(times, dtype=float)
+    events = np.asarray(events, dtype=int)
+    n, n_classes = proba.shape
+    if len(cutpoints) != n_classes - 1:
+        return multinomial_brier_loss(proba, y)
+    target = np.eye(n_classes)[y]
+    sq = np.square(proba - target)
+    km_times, km_surv = _km_censoring_estimator(times, events)
+    total_weight = 0.0
+    total_loss = 0.0
+    for i in range(n):
+        for c in range(n_classes):
+            t_c = float(cutpoints[c - 1]) if c >= 1 else 0.0
+            include = bool(events[i] == 1 or times[i] >= t_c)
+            if not include:
+                continue
+            g = _km_lookup(min(float(times[i]), t_c) if c >= 1 else 0.0, km_times, km_surv)
+            if g < floor:
+                return multinomial_brier_loss(proba, y)
+            w = 1.0 / g
+            total_weight += w
+            total_loss += w * float(sq[i, c])
+    if total_weight <= 0:
+        return multinomial_brier_loss(proba, y)
+    return float(total_loss / total_weight)
 
 
 def explanation_consistency_loss(
@@ -87,13 +166,19 @@ def phase_e_loss_report(
     x: np.ndarray,
     feature_names: list[str],
     *,
+    times: np.ndarray | None = None,
+    events: np.ndarray | None = None,
+    cutpoints: list[float] | None = None,
     lambda_cal: float = 1.0,
     lambda_exp: float = 0.2,
     lambda_clin: float = 0.1,
     kappa: float = 5.0,
 ) -> dict[str, float]:
     pred = float(-np.mean(np.log(np.clip(proba[np.arange(len(y)), y], 1e-12, 1.0))))
-    cal = multinomial_brier_loss(proba, y)
+    if times is not None and events is not None and cutpoints is not None:
+        cal = ipcw_brier_loss(proba, y, times, events, cutpoints)
+    else:
+        cal = multinomial_brier_loss(proba, y)
     exp = explanation_consistency_loss(shap_values, cox_beta, x, kappa=kappa)
     clin = clinical_rule_violation_loss(shap_values, feature_names)
     total = pred + lambda_cal * cal + lambda_exp * exp + lambda_clin * clin

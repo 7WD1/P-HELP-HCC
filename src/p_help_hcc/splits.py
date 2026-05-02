@@ -42,7 +42,6 @@ def build_repeated_splits(
     stratify_cols = stratify_cols or [
         CANONICAL_COLUMNS["label"],
         CANONICAL_COLUMNS["surgery"],
-        CANONICAL_COLUMNS["aetiology"],
     ]
     out: dict[str, dict[str, list[dict[str, list[int]]]]] = {}
     groups = df["patient_id"].astype(str).to_numpy() if "patient_id" in df.columns else np.arange(len(df)).astype(str)

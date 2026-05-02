@@ -64,8 +64,8 @@ class PHelpHCCPipeline:
             pca_variance=float(cluster_cfg.get("pca_variance", 0.95)),
             n_init=int(cluster_cfg.get("n_init", 20)),
             random_state=self.seed,
-        ).fit(s_train)
-        cluster_val = self.clusterer.one_hot(s_val)
+        ).fit(x_train)
+        cluster_val = self.clusterer.one_hot(x_val)
         self.ensemble = PHelpEnsemble(self.config, seed=self.seed).fit(s_train, y_train, s_val, y_val, cluster_val)
         cox_cfg = self.config.get("phase_e", {}).get("cox", {})
         self.cox = CoxElasticNetTorch(
@@ -110,6 +110,8 @@ class PHelpHCCPipeline:
         train_proba = self.predict_proba(train_df)
         shap_proxy = x_train * self.cox.beta_.reshape(1, -1)
         loss_cfg = self.config.get("phase_e", {}).get("loss", {})
+        survival_bins = self.config.get("data", {}).get("survival_bins_months", [0, 6, 12, 24, 36, 48, 60, 72])
+        cutpoints = list(survival_bins[1:])
         self.phase_e_loss_ = phase_e_loss_report(
             train_proba,
             y_train,
@@ -117,6 +119,9 @@ class PHelpHCCPipeline:
             self.cox.beta_,
             x_train,
             self.preprocessor.output_names_,
+            times=train_df[self.config["data"]["target_time_col"]].to_numpy(dtype=float),
+            events=train_df[self.config["data"]["event_col"]].to_numpy(dtype=int),
+            cutpoints=cutpoints,
             lambda_cal=float(loss_cfg.get("lambda_cal", 1.0)),
             lambda_exp=float(loss_cfg.get("lambda_exp", 0.2)),
             lambda_clin=float(loss_cfg.get("lambda_clin", 0.1)),
@@ -142,14 +147,19 @@ class PHelpHCCPipeline:
     def predict_proba(self, df: pd.DataFrame) -> np.ndarray:
         if self.ensemble is None or self.clusterer is None:
             raise RuntimeError("Pipeline is not fitted")
-        _x, state = self.transform_state(df)
-        return self.predict_proba_from_state(state)
+        x, state = self.transform_state(df)
+        cluster = self.clusterer.one_hot(x)
+        return self.ensemble.predict_proba(state, cluster)
 
-    def predict_proba_from_state(self, state: np.ndarray) -> np.ndarray:
+    def predict_proba_from_state(
+        self, state: np.ndarray, cluster_one_hot: np.ndarray | None = None
+    ) -> np.ndarray:
         if self.ensemble is None or self.clusterer is None:
             raise RuntimeError("Pipeline is not fitted")
-        cluster = self.clusterer.one_hot(state)
-        return self.ensemble.predict_proba(state, cluster)
+        if cluster_one_hot is None:
+            n_c = self.clusterer.kmeans.n_clusters
+            cluster_one_hot = np.full((state.shape[0], n_c), 1.0 / n_c)
+        return self.ensemble.predict_proba(state, cluster_one_hot)
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
         return np.argmax(self.predict_proba(df), axis=1)
@@ -171,16 +181,17 @@ class PHelpHCCPipeline:
         )
 
     def counterfactual_report(self, df: pd.DataFrame, row: int = 0) -> list[dict[str, float | str | bool]]:
-        if self.counterfactual is None:
+        if self.counterfactual is None or self.clusterer is None:
             raise RuntimeError("Pipeline is not fitted")
-        _x, state = self.transform_state(df)
-        return self.counterfactual.sweep_patient(self, state[row])
+        x, state = self.transform_state(df)
+        cluster_one_hot = self.clusterer.one_hot(x[row : row + 1])
+        return self.counterfactual.sweep_patient(self, state[row], cluster_one_hot=cluster_one_hot)
 
     def phenotype_quality(self, df: pd.DataFrame) -> dict[str, float]:
         if self.clusterer is None:
             raise RuntimeError("Pipeline is not fitted")
-        _x, state = self.transform_state(df)
-        return self.clusterer.quality(state)
+        x, _state = self.transform_state(df)
+        return self.clusterer.quality(x)
 
     def phase_p_observe(self, df: pd.DataFrame) -> list[dict[str, float | str]]:
         if self.parallel_controller is None:

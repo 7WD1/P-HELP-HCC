@@ -13,7 +13,9 @@ from .society import ArtificialSocietyDynamics, SocietyTransformer
 
 
 class StateProbabilityModel(Protocol):
-    def predict_proba_from_state(self, state: np.ndarray) -> np.ndarray:
+    def predict_proba_from_state(
+        self, state: np.ndarray, cluster_one_hot: np.ndarray | None = None
+    ) -> np.ndarray:
         ...
 
 
@@ -85,6 +87,7 @@ class CounterfactualSweep:
         state_row: np.ndarray,
         *,
         clinical_only: bool = True,
+        cluster_one_hot: np.ndarray | None = None,
     ) -> list[dict[str, float | str | bool]]:
         if self.propensity_model is None or self.action_state_templates is None:
             raise RuntimeError("CounterfactualSweep is not fitted")
@@ -97,15 +100,15 @@ class CounterfactualSweep:
         distances = np.linalg.norm(self.action_state_templates - row[:, trt_slice], axis=1)
         factual_action = int(np.argmin(distances))
         factual_state = self._rollout_action(row, factual_action)
-        factual_p = float(model.predict_proba_from_state(factual_state)[:, 2:].sum(axis=1)[0])
+        factual_p = float(model.predict_proba_from_state(factual_state, cluster_one_hot)[:, 2:].sum(axis=1)[0])
         for action_idx, action in enumerate(self.actions):
             estimable = bool(lo <= prop[action_idx] <= hi)
             forced = self._rollout_action(row, action_idx)
-            p = float(model.predict_proba_from_state(forced)[:, 2:].sum(axis=1)[0])
+            p = float(model.predict_proba_from_state(forced, cluster_one_hot)[:, 2:].sum(axis=1)[0])
             boot = []
             for _ in range(max(1, self.bootstrap_replicates)):
                 noisy = forced + rng.normal(0.0, 0.03, size=forced.shape)
-                boot.append(float(model.predict_proba_from_state(noisy)[:, 2:].sum(axis=1)[0]))
+                boot.append(float(model.predict_proba_from_state(noisy, cluster_one_hot)[:, 2:].sum(axis=1)[0]))
             delta_boot = np.asarray(boot) - factual_p
             ci_lo, ci_hi = np.quantile(delta_boot, [0.025, 0.975])
             guideline_conf = float(np.clip(0.75 + 0.2 * estimable - 0.08 * (action_idx == 1 and row[0, 20] > 1.5), 0, 1))

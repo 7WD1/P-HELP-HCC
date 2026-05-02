@@ -16,7 +16,7 @@ splits:
   outer_folds: 5
   inner_val_fraction: 0.2
   seeds: [42, 123, 2024, 31415, 65537]
-  stratify_on: [survival_class, surgical_strategy, dominant_aetiology]
+  stratify_on: [survival_class, surgical_strategy]
 
 phase_a:
   delta_t_months: 1
