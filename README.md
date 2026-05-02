@@ -240,11 +240,3 @@ If you use this code or build upon the framework, please cite the paper:
 }
 ```
 
----
-
-<div align="center">
-
-For methodological background see the accompanying manuscript (`paper/main.tex`).<br/>
-Issues and reproducibility questions are welcome via the GitHub tracker.
-
-</div>
