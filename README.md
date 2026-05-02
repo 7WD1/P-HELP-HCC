@@ -11,6 +11,8 @@ Reference implementation accompanying the paper, faithful to the Phase&nbsp;A / 
 [![scikit-learn](https://img.shields.io/badge/scikit--learn-1.2%2B-f7931e.svg)](https://scikit-learn.org/)
 [![Status](https://img.shields.io/badge/status-research--code-orange.svg)](#)
 
+**English** &nbsp;|&nbsp; [繁體中文](README.zh-TW.md)
+
 </div>
 
 ---
