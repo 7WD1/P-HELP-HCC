@@ -13,6 +13,12 @@
 
 [English](README.md) &nbsp;|&nbsp; **繁體中文**
 
+**作者.** 姜文棟（淡江大學, `wendongjiang@ieee.org`）·
+林聰蓉（淡江大學 / 台北市立聯合醫院仁愛院區, `dab70@tpech.gov.tw`）·
+張志勇（淡江大學, `cychang@mail.tku.edu.tw`）。
+
+**論文已投稿至 IEEE Internet of Things Journal（IEEE IoTJ）。**
+
 </div>
 
 ---
@@ -134,7 +140,8 @@ code/
 │   ├── counterfactual.py     # Phase C：情境掃掠 + 傾向分數閘
 │   ├── cox.py                # Phase E：Cox 彈性網（Torch）
 │   ├── explain.py            # Phase E：SHAP + IPCW Brier + L_exp / L_clin
-│   ├── parallel.py           # Phase P：串流誤差控制器
+│   ├── parallel.py           # Phase P：串流誤差控制器 + 棄答規則
+│   ├── safeguards.py         # DP-SGD / Mahalanobis OOD / 雜湊鏈稽核 / IRB 閘
 │   ├── pipeline.py           # 端到端 PHelpHCCPipeline
 │   ├── splits.py             # 病人層級重複 5-fold 切分
 │   ├── preprocessing.py      # 67 特徵精選與插補
@@ -161,13 +168,19 @@ code/
 | 隨機森林 | $n_{\text{est}}$, max depth | $500$, $10$ |
 | XGBoost | $n_{\text{est}}$, lr, max depth | $500$, $0.05$, $6$ |
 | 融合 | $\alpha_{\text{fuse}}$ | $0.60$ |
-| 反事實 | $B$, propensity gate, $\rho^{\star}$ | $200$, $[0.05,0.95]$, $0.6$ |
-| Phase E 損失 | $\gamma_1{=}\lambda_{\text{cal}}$ / $\gamma_2{=}\lambda_{\text{exp}}$ / $\gamma_3{=}\lambda_{\text{clin}}$ | $1.0$ / $0.2$ / $0.1$ |
+| PCA 保留變異量 | $r_{\text{PCA}}$ | $0.90$（論文 $\approx 24\pm2$ 主成分） |
+| 反事實 | $B$, propensity gate, $\rho_{\text{trim}}$, $\rho^{\star}$ | $200$, $[0.05,0.95]$, $0.05$, $0.30$ |
+| Phase E 損失 | $\gamma_1{=}\lambda_{\text{cal}}$ / $\gamma_2{=}\lambda_{\text{exp}}$ / $\gamma_3{=}\lambda_{\text{clin}}$ | $0.4$ / $0.3$ / $0.2$ |
 | Phase E 損失 | $\tanh$ 銳度 $\kappa$ | $5.0$ |
 | Cox 彈性網 | epochs, lr, $\lambda_{\ell_1}$, $\lambda_{\ell_2}$ | $300$, $0.03$, $10^{-3}$, $10^{-3}$ |
-| Phase P 門檻 | $\bar e_{\text{soft}}$ / $\bar e_{\text{hard}}$ | $0.18$ / $0.32$ |
+| Phase P 串流觸發 | $\bar e_{\text{soft}}$ / $\bar e_{\text{hard}}$ | $0.18$（再校準） / $0.32$（重訓） |
+| Phase P 棄答熵 | $p_{\text{soft}}$ / $p_{\text{hard}}$ | $0.65$ / $0.85$ |
+| Phase P 線上步長 / 漂移懲罰 | $\eta_w$ / $\lambda_w$ | $5{\times}10^{-3}$ / $10^{-2}$ |
 | Phase P 視窗 | $n_b$ / $n_r$ | $30$ / $200$ |
+| 纖維化 $\kappa_{\text{age}}$/$\kappa_{\text{trt}}$/$\kappa_{\text{rec}}$ | per month | $0.005$ / $0.010$ / $0.015$ |
 | 類別權重 | C1 … C8 | `[1.0, 1.5, 1.7, 2.1, 2.5, 2.7, 2.3, 4.5]` |
+| DP-SGD（聯邦，Future Work） | $(\varepsilon, \delta)$ / $\sigma$ / $C$ | $(4.0, 10^{-5})$ / $1.1$ / $1$ |
+| Mahalanobis OOD | 各類質心百分位 | $99$ |
 
 巢狀超參搜尋網格寫在 `configs/search_grid.yaml`，與第 8.2 節的描述逐格對應。
 
@@ -234,10 +247,12 @@ python -m p_help_hcc.train --config configs/default.yaml `
 
 ```bibtex
 @article{phelp_hcc,
-  title   = {P-HELP-HCC: Parallel Hierarchical Explainable Learning Pipeline
-             for Hepatocellular Carcinoma Survival Stratification},
-  author  = {Anonymous},
-  journal = {Manuscript under review},
-  year    = {2026}
+  title   = {An Explainable Internet-of-Medical-Things Framework with
+             Patient Digital Twins and Parallel Edge--Cloud Intelligence
+             for Hepatocellular Carcinoma Survival Prediction},
+  author  = {Wen-Dong Jiang and Tsung-Jung Lin and Chih-Yung Chang},
+  journal = {IEEE Internet of Things Journal},
+  year    = {2026},
+  note    = {Submitted}
 }
 ```

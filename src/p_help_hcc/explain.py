@@ -169,9 +169,9 @@ def phase_e_loss_report(
     times: np.ndarray | None = None,
     events: np.ndarray | None = None,
     cutpoints: list[float] | None = None,
-    lambda_cal: float = 1.0,
-    lambda_exp: float = 0.2,
-    lambda_clin: float = 0.1,
+    lambda_cal: float = 0.4,
+    lambda_exp: float = 0.3,
+    lambda_clin: float = 0.2,
     kappa: float = 5.0,
 ) -> dict[str, float]:
     pred = float(-np.mean(np.log(np.clip(proba[np.arange(len(y)), y], 1e-12, 1.0))))

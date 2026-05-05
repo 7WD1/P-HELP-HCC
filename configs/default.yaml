@@ -24,8 +24,13 @@ phase_a:
   d_max_cm: 20.0
   growth_rate_lognormal_mu: -1.4
   growth_rate_lognormal_sigma: 0.6
+  tumor_growth_prior_mean: 0.07
+  tumor_growth_prior_std: 0.03
   afp_alpha_per_month: 0.04
   afp_beta: 1.8
+  fibrosis_kappa_age_per_month: 0.005
+  fibrosis_kappa_treatment_per_month: 0.010
+  fibrosis_kappa_recovery_per_month: 0.015
   fibrosis_age_rate_per_year: 0.002
   fibrosis_treatment_bump: 0.015
   fibrosis_recovery_rate: 0.020
@@ -61,14 +66,15 @@ phase_c:
     class_weights: [1.0, 1.5, 1.7, 2.1, 2.5, 2.7, 2.3, 4.5]
   clustering:
     k: 4
-    pca_variance: 0.95
+    pca_variance: 0.90
     init: k-means++
     n_init: 20
   counterfactual:
     actions: [None, Resection, TACE, RFA, Sorafenib, Combo]
     bootstrap_replicates: 200
     propensity_gate: [0.05, 0.95]
-    guideline_confidence_threshold: 0.6
+    propensity_trim: 0.05
+    guideline_confidence_threshold: 0.30
     horizon_months: 72
     report_horizon_months: 12
 
@@ -82,18 +88,39 @@ phase_e:
     background_samples: 200
     fallback_permutation_repeats: 5
   loss:
-    lambda_cal: 1.0
-    lambda_exp: 0.2
-    lambda_clin: 0.1
+    lambda_cal: 0.4
+    lambda_exp: 0.3
+    lambda_clin: 0.2
     tanh_kappa: 5.0
     refresh_epochs: 10
 
 phase_p:
   soft_error_threshold: 0.18
   hard_error_threshold: 0.32
-  online_learning_rate: 0.0001
-  proximal_weight: 0.001
+  abstention_entropy_soft: 0.65
+  abstention_entropy_hard: 0.85
+  online_learning_rate: 0.005
+  proximal_weight: 0.01
   monitor_window: 30
   retrain_buffer: 200
   classification_calibration_mix: 0.5
 
+safeguards:
+  federated:
+    enabled: false
+    framing: future_work
+    dp_sgd:
+      epsilon_per_round: 4.0
+      delta: 1.0e-5
+      noise_multiplier_sigma: 1.1
+      l2_clip_C: 1.0
+    secure_aggregation:
+      protocol: bonawitz
+  ood_detection:
+    method: mahalanobis
+    per_class_centroid: true
+    percentile_threshold: 99
+  audit_log:
+    primitive: hash_chained_signed_append
+    daily_anchor: hospital_HSM_signed_root
+    retention_days: 2555

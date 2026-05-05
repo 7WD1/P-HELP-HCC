@@ -13,7 +13,7 @@ from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score, silho
 @dataclass
 class PhenotypeClusterer:
     k: int = 4
-    pca_variance: float = 0.95
+    pca_variance: float = 0.90
     n_init: int = 20
     random_state: int = 42
     pca: PCA | None = None

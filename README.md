@@ -13,6 +13,13 @@ Reference implementation accompanying the paper, faithful to the Phase&nbsp;A / 
 
 **English** &nbsp;|&nbsp; [繁體中文](README.zh-TW.md)
 
+**Authors.** Wen-Dong Jiang (Tamkang University, `wendongjiang@ieee.org`) ·
+Tsung-Jung Lin (Tamkang University and Taipei City Hospital, Ren-Ai Branch,
+`dab70@tpech.gov.tw`) ·
+Chih-Yung Chang (Tamkang University, `cychang@mail.tku.edu.tw`).
+
+**Manuscript submitted to the IEEE Internet of Things Journal (IEEE IoTJ).**
+
 </div>
 
 ---
@@ -81,7 +88,8 @@ The private 673-patient cohort is **not** redistributed. The code supports two d
 - **Phase C — phenotype branch.** PCA conserving 95% variance plus K-means with $K{=}4$ on the curated input, returning silhouette / Davies–Bouldin / Calinski–Harabasz internal validity indices.
 - **Phase C — counterfactual sweep.** Six-action space `{None, Resection, TACE, RFA, Sorafenib, Combo}`, propensity gate $[0.05,\,0.95]$, guideline-confidence threshold $\rho^{\star}{=}0.6$, bootstrap of $B{=}200$ replicates, and $P(\mathrm{OS}{>}12\,\mathrm{m})$ treatment-arm reports (Section 5.4 + Algorithm 1).
 - **Phase E.** Cox elastic-net hazard layer with PyTorch partial-likelihood, SHAP/permutation explanation utilities, Cox–SHAP rank alignment, and the explanation-consistency loss with $\tanh$-sharpness $\kappa{=}5$ (Section 6).
-- **Phase P.** Streaming virtual–real error controller with thresholds $\bar{e}_{\text{soft}}{=}0.18$ / $\bar{e}_{\text{hard}}{=}0.32$, online step $\eta{=}10^{-4}$, proximal anchor $\lambda_w{=}10^{-3}$, monitor window $n_b{=}30$, retrain buffer $n_r{=}200$, and error mixing weight $\alpha_e{=}0.5$ (Section 7 + Algorithm 2).
+- **Phase P.** Streaming virtual–real error controller with thresholds $\bar{e}_{\text{soft}}{=}0.18$ / $\bar{e}_{\text{hard}}{=}0.32$, per-prediction abstention entropies $p_{\text{soft}}{=}0.65$ / $p_{\text{hard}}{=}0.85$, online step $\eta_w{=}5{\times}10^{-3}$, proximal anchor $\lambda_w{=}10^{-2}$, monitor window $n_b{=}30$, retrain buffer $n_r{=}200$, and error mixing weight $\alpha_e{=}0.5$ (Section 7 + Algorithm 2).
+- **Deployment safeguards.** `safeguards.py` exposes the four IoMT-deployment safeguards declared in Section V Discussion: federated DP-SGD with $(\varepsilon, \delta){=}(4.0, 10^{-5})$ per round, $\sigma{=}1.1$, clip $C{=}1$ and Bonawitz-style secure aggregation (framed as Future Work); Mahalanobis-distance OOD detection at the per-class 99th percentile; a hash-chained signed-append audit log anchored daily to a hospital HSM-signed root; and a silent-shadow gate that requires explicit IRB / SaMD review before live closed-loop influence.
 
 ---
 
@@ -134,7 +142,8 @@ code/
 │   ├── counterfactual.py     # Phase C: scenario sweep + propensity gate
 │   ├── cox.py                # Phase E: Cox elastic-net (Torch)
 │   ├── explain.py            # Phase E: SHAP + IPCW Brier + L_exp / L_clin
-│   ├── parallel.py           # Phase P: streaming error controller
+│   ├── parallel.py           # Phase P: streaming error controller + abstention
+│   ├── safeguards.py         # DP-SGD / Mahalanobis OOD / audit log / IRB gate
 │   ├── pipeline.py           # End-to-end PHelpHCCPipeline
 │   ├── splits.py             # Repeated 5-fold patient splits
 │   ├── preprocessing.py      # 67-feature curation + imputation
@@ -161,13 +170,19 @@ The released `configs/default.yaml` encodes the paper's final selections. The mo
 | Random Forest | $n_{\text{est}}$, max depth | $500$, $10$ |
 | XGBoost | $n_{\text{est}}$, lr, max depth | $500$, $0.05$, $6$ |
 | Fusion | $\alpha_{\text{fuse}}$ | $0.60$ |
-| Counterfactual | $B$, propensity gate, $\rho^{\star}$ | $200$, $[0.05,0.95]$, $0.6$ |
-| Phase E loss | $\gamma_1{=}\lambda_{\text{cal}}$ / $\gamma_2{=}\lambda_{\text{exp}}$ / $\gamma_3{=}\lambda_{\text{clin}}$ | $1.0$ / $0.2$ / $0.1$ |
+| PCA variance retained | $r_{\text{PCA}}$ | $0.90$ (paper $\approx 24\pm2$ components) |
+| Counterfactual | $B$, propensity gate, $\rho_{\text{trim}}$, $\rho^{\star}$ | $200$, $[0.05,0.95]$, $0.05$, $0.30$ |
+| Phase E loss | $\gamma_1{=}\lambda_{\text{cal}}$ / $\gamma_2{=}\lambda_{\text{exp}}$ / $\gamma_3{=}\lambda_{\text{clin}}$ | $0.4$ / $0.3$ / $0.2$ |
 | Phase E loss | $\tanh$ sharpness $\kappa$ | $5.0$ |
 | Cox elastic-net | epochs, lr, $\lambda_{\ell_1}$, $\lambda_{\ell_2}$ | $300$, $0.03$, $10^{-3}$, $10^{-3}$ |
-| Phase P thresholds | $\bar e_{\text{soft}}$ / $\bar e_{\text{hard}}$ | $0.18$ / $0.32$ |
+| Phase P streaming triggers | $\bar e_{\text{soft}}$ / $\bar e_{\text{hard}}$ | $0.18$ (recalibrate) / $0.32$ (retrain) |
+| Phase P abstention entropies | $p_{\text{soft}}$ / $p_{\text{hard}}$ | $0.65$ / $0.85$ |
+| Phase P online step / drift penalty | $\eta_w$ / $\lambda_w$ | $5{\times}10^{-3}$ / $10^{-2}$ |
 | Phase P windows | $n_b$ / $n_r$ | $30$ / $200$ |
+| Fibrosis $\kappa_{\text{age}}$/$\kappa_{\text{trt}}$/$\kappa_{\text{rec}}$ | per month | $0.005$ / $0.010$ / $0.015$ |
 | Class weights | C1 … C8 | `[1.0, 1.5, 1.7, 2.1, 2.5, 2.7, 2.3, 4.5]` |
+| DP-SGD (federated, Future Work) | $(\varepsilon, \delta)$ / $\sigma$ / $C$ | $(4.0, 10^{-5})$ / $1.1$ / $1$ |
+| Mahalanobis OOD | per-class centroid percentile | $99$ |
 
 The nested grid for hyperparameter search lives in `configs/search_grid.yaml` and matches Section 8.2 cell-for-cell.
 
@@ -234,11 +249,13 @@ If you use this code or build upon the framework, please cite the paper:
 
 ```bibtex
 @article{phelp_hcc,
-  title   = {P-HELP-HCC: Parallel Hierarchical Explainable Learning Pipeline
-             for Hepatocellular Carcinoma Survival Stratification},
-  author  = {Anonymous},
-  journal = {Manuscript under review},
-  year    = {2026}
+  title   = {An Explainable Internet-of-Medical-Things Framework with
+             Patient Digital Twins and Parallel Edge--Cloud Intelligence
+             for Hepatocellular Carcinoma Survival Prediction},
+  author  = {Wen-Dong Jiang and Tsung-Jung Lin and Chih-Yung Chang},
+  journal = {IEEE Internet of Things Journal},
+  year    = {2026},
+  note    = {Submitted}
 }
 ```
 

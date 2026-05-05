@@ -1,4 +1,10 @@
-"""Phase P virtual-real feedback controller."""
+"""Phase P virtual-real feedback controller.
+
+Implements the dual-rule controller of paper Eq.~(16) and Table VII:
+streaming residual triggers ``e_soft=0.18`` (recalibrate) / ``e_hard=0.32``
+(retrain), and per-prediction Shannon-entropy abstention bands
+``p_soft=0.65`` (soft-abstain) / ``p_hard=0.85`` (hard-abstain).
+"""
 
 from __future__ import annotations
 
@@ -8,12 +14,19 @@ from dataclasses import dataclass, field
 import numpy as np
 
 
+def _entropy(probabilities: np.ndarray) -> float:
+    p = np.clip(np.asarray(probabilities, dtype=float), 1e-12, 1.0)
+    return float(-(p * np.log(p)).sum())
+
+
 @dataclass
 class ParallelController:
     soft_error_threshold: float = 0.18
     hard_error_threshold: float = 0.32
-    online_learning_rate: float = 1e-4
-    proximal_weight: float = 1e-3
+    abstention_entropy_soft: float = 0.65
+    abstention_entropy_hard: float = 0.85
+    online_learning_rate: float = 5e-3
+    proximal_weight: float = 1e-2
     monitor_window: int = 30
     retrain_buffer: int = 200
     classification_calibration_mix: float = 0.5
@@ -34,6 +47,23 @@ class ParallelController:
         else:
             action = "no_update"
         return {"error": err, "streaming_error": avg, "action": action}
+
+    def abstain(self, probabilities: np.ndarray) -> dict[str, float | str | bool]:
+        """Per-prediction Shannon-entropy abstention rule (paper Table VII).
+
+        Returns ``hard_abstain`` (entropy >= e_hard, never surface),
+        ``soft_abstain`` (entropy >= e_soft, surface with caveat), or
+        ``serve`` (entropy < e_soft, surface normally).
+        """
+
+        h = _entropy(probabilities)
+        if h >= self.abstention_entropy_hard:
+            decision = "hard_abstain"
+        elif h >= self.abstention_entropy_soft:
+            decision = "soft_abstain"
+        else:
+            decision = "serve"
+        return {"entropy": h, "decision": decision, "abstain": decision != "serve"}
 
     def soft_update_fusion_weights(
         self,

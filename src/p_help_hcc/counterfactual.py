@@ -54,7 +54,7 @@ def infer_observed_actions_from_state(state: np.ndarray, n_actions: int = 6) -> 
 class CounterfactualSweep:
     actions: list[str] = None
     propensity_gate: tuple[float, float] = (0.05, 0.95)
-    guideline_confidence_threshold: float = 0.6
+    guideline_confidence_threshold: float = 0.30
     bootstrap_replicates: int = 200
     random_state: int = 42
     propensity_model: PropensityModel | None = None

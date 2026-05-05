@@ -8,6 +8,11 @@ version = "0.1.0"
 description = "P-HELP-HCC reproducible code derived from the paper methods and experiments"
 readme = "README.md"
 requires-python = ">=3.10"
+authors = [
+  {name = "Wen-Dong Jiang", email = "wendongjiang@ieee.org"},
+  {name = "Tsung-Jung Lin", email = "dab70@tpech.gov.tw"},
+  {name = "Chih-Yung Chang", email = "cychang@mail.tku.edu.tw"},
+]
 dependencies = [
   "numpy>=1.24",
   "pandas>=1.5",

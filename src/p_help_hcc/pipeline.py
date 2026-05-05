@@ -61,7 +61,7 @@ class PHelpHCCPipeline:
         cluster_cfg = self.config.get("phase_c", {}).get("clustering", {})
         self.clusterer = PhenotypeClusterer(
             k=int(cluster_cfg.get("k", 4)),
-            pca_variance=float(cluster_cfg.get("pca_variance", 0.95)),
+            pca_variance=float(cluster_cfg.get("pca_variance", 0.90)),
             n_init=int(cluster_cfg.get("n_init", 20)),
             random_state=self.seed,
         ).fit(x_train)
@@ -82,7 +82,7 @@ class PHelpHCCPipeline:
         self.counterfactual = CounterfactualSweep(
             actions=list(cf_cfg.get("actions", [])) or None,
             propensity_gate=tuple(cf_cfg.get("propensity_gate", [0.05, 0.95])),
-            guideline_confidence_threshold=float(cf_cfg.get("guideline_confidence_threshold", 0.6)),
+            guideline_confidence_threshold=float(cf_cfg.get("guideline_confidence_threshold", 0.30)),
             bootstrap_replicates=int(cf_cfg.get("bootstrap_replicates", 200)),
             random_state=self.seed,
             dynamics=ArtificialSocietyDynamics(
@@ -101,8 +101,10 @@ class PHelpHCCPipeline:
         self.parallel_controller = ParallelController(
             soft_error_threshold=float(p_cfg.get("soft_error_threshold", 0.18)),
             hard_error_threshold=float(p_cfg.get("hard_error_threshold", 0.32)),
-            online_learning_rate=float(p_cfg.get("online_learning_rate", 1e-4)),
-            proximal_weight=float(p_cfg.get("proximal_weight", 1e-3)),
+            abstention_entropy_soft=float(p_cfg.get("abstention_entropy_soft", 0.65)),
+            abstention_entropy_hard=float(p_cfg.get("abstention_entropy_hard", 0.85)),
+            online_learning_rate=float(p_cfg.get("online_learning_rate", 5e-3)),
+            proximal_weight=float(p_cfg.get("proximal_weight", 1e-2)),
             monitor_window=int(p_cfg.get("monitor_window", 30)),
             retrain_buffer=int(p_cfg.get("retrain_buffer", 200)),
             classification_calibration_mix=float(p_cfg.get("classification_calibration_mix", 0.5)),
@@ -122,9 +124,9 @@ class PHelpHCCPipeline:
             times=train_df[self.config["data"]["target_time_col"]].to_numpy(dtype=float),
             events=train_df[self.config["data"]["event_col"]].to_numpy(dtype=int),
             cutpoints=cutpoints,
-            lambda_cal=float(loss_cfg.get("lambda_cal", 1.0)),
-            lambda_exp=float(loss_cfg.get("lambda_exp", 0.2)),
-            lambda_clin=float(loss_cfg.get("lambda_clin", 0.1)),
+            lambda_cal=float(loss_cfg.get("lambda_cal", 0.4)),
+            lambda_exp=float(loss_cfg.get("lambda_exp", 0.3)),
+            lambda_clin=float(loss_cfg.get("lambda_clin", 0.2)),
             kappa=float(loss_cfg.get("tanh_kappa", 5.0)),
         )
         self.train_metrics_ = self.evaluate(train_df)
