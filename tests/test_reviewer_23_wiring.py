@@ -1,5 +1,6 @@
 import sys
 import unittest
+import runpy
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +20,17 @@ from p_hlpl_hcc.society import SocietyTransformer
 
 
 class Reviewer23WiringTests(unittest.TestCase):
+    def test_one_command_workflow_includes_each_named_phase_p_ablation(self):
+        workflow = runpy.run_path(str(ROOT / "scripts" / "reproduce.py"))
+        named_ablations = workflow["NAMED_ABLATIONS"]
+        self.assertTrue(
+            {
+                "PhasePNoIPCW",
+                "PhasePNoCheckpoint",
+                "PhasePNoPlatt",
+            }.issubset(named_ablations)
+        )
+
     def test_named_a5_a6_configs_disable_the_claimed_components(self):
         base = load_config(ROOT / "configs" / "default.yaml")
         dp = base["safeguards"]["federated"]["dp_sgd"]
@@ -46,7 +58,11 @@ class Reviewer23WiringTests(unittest.TestCase):
     def test_all_named_ablation_and_dynamics_configs_resolve(self):
         base = load_config(ROOT / "configs" / "default.yaml")
         manifest = ROOT / "configs" / "ablations.yaml"
-        resolved = {name: apply_named_ablation(base, manifest, name) for name in ["A1", "A2", "A3", "A4", "A5", "A6"]}
+        names = [
+            "A1", "A2", "A3", "A4", "A5", "A6",
+            "PhasePNoIPCW", "PhasePNoCheckpoint", "PhasePNoPlatt",
+        ]
+        resolved = {name: apply_named_ablation(base, manifest, name) for name in names}
         self.assertEqual(resolved["A1"]["experiment"]["pipeline"], "coxph_baseline")
         self.assertEqual(len(resolved["A2"]["phase_c"]["learners"]), 3)
         self.assertFalse(resolved["A3"]["phase_c"]["clustering"]["enabled"])
@@ -58,6 +74,22 @@ class Reviewer23WiringTests(unittest.TestCase):
         }
         self.assertFalse(variants["static_only"]["phase_a"]["tumor_update_enabled"])
         self.assertTrue(variants["full_dynamics"]["phase_a"]["fibrosis_update_enabled"])
+        phase_p_expected = {
+            "PhasePNoIPCW": (False, True, True),
+            "PhasePNoCheckpoint": (True, False, True),
+            "PhasePNoPlatt": (True, True, False),
+        }
+        for name, expected in phase_p_expected.items():
+            phase_p = resolved[name]["phase_p"]
+            self.assertTrue(phase_p["enabled"])
+            self.assertEqual(
+                (
+                    phase_p["ipcw_sample_reweighting_enabled"],
+                    phase_p["model_selection_enabled"],
+                    phase_p["platt_calibration_enabled"],
+                ),
+                expected,
+            )
         for name, block in [
             ("DropPatient", "patient"),
             ("DropTumor", "tumor"),
@@ -244,6 +276,57 @@ class Reviewer23WiringTests(unittest.TestCase):
         self.assertTrue(np.allclose(full_proba.sum(axis=1), 1.0))
         self.assertTrue(np.allclose(a6_proba, raw))
         self.assertFalse(np.allclose(full_proba, a6_proba))
+
+    def test_independent_phase_p_ablation_configs_execute_the_claimed_paths(self):
+        base = apply_fast_overrides(load_config(ROOT / "configs" / "default.yaml"))
+        manifest = ROOT / "configs" / "ablations.yaml"
+        rng = np.random.default_rng(43)
+        x_train = rng.normal(size=(64, 10))
+        x_val = rng.normal(size=(24, 10))
+        y_train = np.arange(64) % 8
+        y_val = np.arange(24) % 8
+        scenario_train = np.arange(64) % 6
+        scenario_val = np.arange(24) % 6
+        cluster_val = np.eye(4)[np.arange(24) % 4]
+        times_train = np.linspace(3, 90, 64)
+        times_val = np.linspace(3, 90, 24)
+        events_train = np.ones(64, dtype=int)
+        events_val = np.ones(24, dtype=int)
+        expected = {
+            "PhasePNoIPCW": (False, True, True),
+            "PhasePNoCheckpoint": (True, False, True),
+            "PhasePNoPlatt": (True, True, False),
+        }
+        for offset, (name, flags) in enumerate(expected.items()):
+            config = apply_named_ablation(base, manifest, name)
+            config["phase_c"]["learners"] = ["logistic", "mlp"]
+            config["phase_c"]["mlp"].update(
+                {"hidden_dims": [10], "epochs": 1, "patience": 1, "batch_size": 16}
+            )
+            config["phase_e"]["loss"]["enabled"] = False
+            model = PHlplEnsemble(config=config, seed=30 + offset).fit(
+                x_train,
+                y_train,
+                x_val,
+                y_val,
+                cluster_val,
+                scenario_train=scenario_train,
+                scenario_val=scenario_val,
+                train_times=times_train,
+                train_events=events_train,
+                val_times=times_val,
+                val_events=events_val,
+                cutpoints=[6, 12, 24, 36, 48, 60, 72],
+            )
+            trace = model.mechanism_trace_
+            self.assertEqual(
+                (
+                    trace["phase_p_ipcw_sample_reweighting"],
+                    trace["phase_p_model_selection"],
+                    trace["phase_p_platt_calibration"],
+                ),
+                flags,
+            )
 
     def test_a6_executable_config_disables_all_phase_p_fit_paths(self):
         base = load_config(ROOT / "configs" / "default.yaml")

@@ -91,13 +91,20 @@ python -m p_hlpl_hcc.train --config configs/default.yaml `
                            --output outputs/smoke `
                            --fast
 
-# All full/A1--A6 paths are named and executable. Smoke outputs are not evidence.
+# Full/A1--A6 and the three one-at-a-time Phase-P mechanism paths are named
+# and executable. Smoke outputs are not evidence.
 python -m p_hlpl_hcc.train --config configs/default.yaml --ablation A1 `
                            --data data/fixture_hcc.csv --output outputs/a1 --fast
 python -m p_hlpl_hcc.train --config configs/default.yaml --ablation A5 `
                            --data data/fixture_hcc.csv --output outputs/a5 --fast
 python -m p_hlpl_hcc.train --config configs/default.yaml --ablation A6 `
                            --data data/fixture_hcc.csv --output outputs/a6 --fast
+python -m p_hlpl_hcc.train --config configs/default.yaml --ablation PhasePNoIPCW `
+                           --data data/fixture_hcc.csv --output outputs/p_no_ipcw --fast
+python -m p_hlpl_hcc.train --config configs/default.yaml --ablation PhasePNoCheckpoint `
+                           --data data/fixture_hcc.csv --output outputs/p_no_checkpoint --fast
+python -m p_hlpl_hcc.train --config configs/default.yaml --ablation PhasePNoPlatt `
+                           --data data/fixture_hcc.csv --output outputs/p_no_platt --fast
 
 # Censoring-aware discrete-time sensitivity path.
 python -m p_hlpl_hcc.train --config configs/discrete_time.yaml `
@@ -121,7 +128,7 @@ The full paper-scale setting (5 seeds x 5 folds = 25 runs, full estimator counts
 ```text
 P-HLPL-HCC/
 |-- configs/
-|   |-- ablations.yaml     # Executable full / A1--A6 component switches
+|   |-- ablations.yaml     # Full/A1--A6 plus independent Phase-P switches
 |   |-- dynamics.yaml      # Four physical-unit longitudinal back-test switches
 |   |-- discrete_time.yaml # Censoring-aware likelihood path
 |   |-- default.yaml       # Paper-scale hyperparameters
@@ -269,6 +276,9 @@ measured edge-device profiling logs are present. See
 
 - Bit-level reproducibility uses a master seed of `42` propagated to NumPy, PyTorch, Python's `random`, scikit-learn, and XGBoost. Deterministic CUDA is enabled via `torch.use_deterministic_algorithms(True)` and `CUBLAS_WORKSPACE_CONFIG=:4096:8`.
 - The code configures the 25-run protocol, A1--A6, PatientOnly, six agent-drop variants, and executable cumulative/single-term loss variants; an IPCW discrete-time likelihood with seven hazards and a 72-month tail; four physical-unit-only longitudinal back-test variants; pretreatment-only observational analyses; locked-model evaluation; paired statistical tests including a patient-bootstrap IPCW C-index contrast; hashes; schemas; and a one-command orchestrator. It does not claim a completed nested-CV study. The repository still lacks the real private split manifests, paper-run predictions/checkpoints, longitudinal inputs, external-cohort inputs, figure-source tables, and measured device logs required to verify the reported numbers.
+- The three Phase-P mechanism variants are `PhasePNoIPCW`, `PhasePNoCheckpoint`, and `PhasePNoPlatt`. The one-command workflow includes them under `--include-ablations`; each disables exactly one prediction-coupled path while leaving the other two enabled.
+- Patient-level scenario contrasts require the recorded pretreatment action as the factual arm. The public API rejects a missing or unrecognized action instead of inferring it from the nearest treatment-state template.
+- FHIR-R4 resource serialization, terminology binding, MQTT transport, and a live edge message bus are not implemented or configured in this repository. They remain deployment-design specifications and must not be described as released executable mappings.
 - The Phase P monitor is evaluated through retrospective replay. Prospective deployment would require a future silent-shadow run before the soft / hard threshold rules take effect.
 
 ## Citation

@@ -12,6 +12,17 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+NAMED_ABLATIONS = [
+    "A1",
+    "A2",
+    "A3",
+    "A4",
+    "A5",
+    "A6",
+    "PhasePNoIPCW",
+    "PhasePNoCheckpoint",
+    "PhasePNoPlatt",
+]
 
 
 def run(command: list[str]) -> None:
@@ -65,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
         base.append("--fast")
     run(base + ["--ablation", "full", "--output", str(output_root / "full")])
     if args.include_ablations:
-        for name in ["A1", "A2", "A3", "A4", "A5", "A6"]:
+        for name in NAMED_ABLATIONS:
             run(base + ["--ablation", name, "--output", str(output_root / name.lower())])
     if args.include_discrete_time:
         discrete = [

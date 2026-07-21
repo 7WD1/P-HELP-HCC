@@ -91,6 +91,7 @@ class CounterfactualSweep:
         model: StateProbabilityModel,
         state_row: np.ndarray,
         *,
+        observed_action: int | None = None,
         clinical_only: bool = True,
         cluster_one_hot: np.ndarray | None = None,
         patient_bootstrap_predictions: dict[int, np.ndarray] | None = None,
@@ -98,13 +99,20 @@ class CounterfactualSweep:
     ) -> list[dict[str, object]]:
         if self.propensity_model is None or self.action_state_templates is None:
             raise RuntimeError("CounterfactualSweep is not fitted")
+        if observed_action is None:
+            raise ValueError(
+                "A recorded pretreatment action is required as the factual arm; "
+                "it is never inferred from proximity to a treatment template"
+            )
+        factual_action = int(observed_action)
+        if factual_action < 0 or factual_action >= len(self.actions):
+            raise ValueError(
+                f"observed_action must be an integer in 0..{len(self.actions) - 1}"
+            )
         row = state_row.reshape(1, -1)
         prop = self.propensity_model.predict(row[:, : self.propensity_feature_count_])[0]
         lo, hi = self.propensity_gate
         out: list[dict[str, object]] = []
-        trt_slice = SocietyTransformer.block_indices("treatment")
-        distances = np.linalg.norm(self.action_state_templates - row[:, trt_slice], axis=1)
-        factual_action = int(np.argmin(distances))
         factual_state = self._rollout_action(row, factual_action)
         factual_p = float(model.predict_proba_from_state(factual_state, cluster_one_hot)[:, 2:].sum(axis=1)[0])
         for action_idx, action in enumerate(self.actions):
@@ -152,6 +160,10 @@ class CounterfactualSweep:
             out.append(
                 {
                     "action": action,
+                    "action_index": int(action_idx),
+                    "factual_action": self.actions[factual_action],
+                    "factual_action_index": factual_action,
+                    "factual_action_source": "recorded_pretreatment_action",
                     "propensity": float(prop[action_idx]),
                     "estimable": estimable,
                     "guideline_confidence": guideline_conf,
@@ -204,8 +216,15 @@ class CounterfactualSweep:
         return self._force_action(state, action_index)
 
 
-def extract_observed_actions_from_df(df) -> np.ndarray:
-    """Map available treatment columns to the paper's six action indices."""
+def extract_observed_actions_from_df(
+    df, *, require_explicit: bool = False
+) -> np.ndarray:
+    """Map recorded pretreatment fields to the paper's six action indices.
+
+    When ``require_explicit`` is true, every row must contain a recognized
+    recorded action.  This is required for a patient-level factual contrast;
+    the factual arm is never reconstructed from state-template proximity.
+    """
 
     import pandas as pd
 
@@ -213,13 +232,31 @@ def extract_observed_actions_from_df(df) -> np.ndarray:
         raise TypeError("df must be a pandas DataFrame")
     n = len(df)
     actions = np.zeros(n, dtype=int)
+    recognized = np.zeros(n, dtype=bool)
     if "surgical_strategy" in df.columns:
         strategy = df["surgical_strategy"].astype(str).str.lower()
-        no_mask = strategy.str.contains("none|no", na=False)
+        no_mask = strategy.str.contains(
+            r"^(?:none|no(?:\s+resection|\s+surgery)?|best\s+supportive\s+care|bsc|palliative)$",
+            regex=True,
+            na=False,
+        )
         actions[no_mask.to_numpy()] = 0
+        recognized |= no_mask.to_numpy()
         resection_mask = strategy.str.contains("resection", na=False) & ~no_mask
         actions[resection_mask.to_numpy()] = 1
-        actions[strategy.str.contains("ablation|rfa", na=False).to_numpy()] = 3
+        recognized |= resection_mask.to_numpy()
+        tace_mask = strategy.str.contains("tace|chemoembol", na=False)
+        actions[tace_mask.to_numpy()] = 2
+        recognized |= tace_mask.to_numpy()
+        ablation_mask = strategy.str.contains("ablation|rfa", na=False)
+        actions[ablation_mask.to_numpy()] = 3
+        recognized |= ablation_mask.to_numpy()
+        systemic_mask = strategy.str.contains("sorafenib|systemic", na=False)
+        actions[systemic_mask.to_numpy()] = 4
+        recognized |= systemic_mask.to_numpy()
+        combo_mask = strategy.str.contains("combo|combination", na=False)
+        actions[combo_mask.to_numpy()] = 5
+        recognized |= combo_mask.to_numpy()
     flag_order = [
         ("treatment_no_resection", 0),
         ("treatment_resection", 1),
@@ -233,4 +270,12 @@ def extract_observed_actions_from_df(df) -> np.ndarray:
         if col in df.columns:
             mask = pd.to_numeric(df[col], errors="coerce").fillna(0).to_numpy() > 0
             actions[mask] = idx
+            recognized |= mask
+    if require_explicit and not np.all(recognized):
+        missing_rows = np.flatnonzero(~recognized)
+        preview = missing_rows[:5].tolist()
+        raise ValueError(
+            "A recorded pretreatment action is required for every requested "
+            f"factual contrast; unrecognized rows include {preview}"
+        )
     return actions.astype(int)

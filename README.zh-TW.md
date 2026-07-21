@@ -17,7 +17,9 @@
 - 單一病人 scenario：propensity 只使用 Treatment 之前的 Patient/Tumor/Liver 狀態；每個 arm 都會把 factual-treatment-derived auxiliary coordinates 設為共同中性值；臨床顯示需要恰好 `B=200` 個有限的外部病人層級 bootstrap 預測、guideline confidence、propensity overlap 與不跨零的信賴區間。缺少任一輸入時，預設臨床顯示為空；門檻為 `rho*=0.30`。
 - Cohort-level observational analysis：輸出 naive、IPTW、cross-fitted AIPW/DR、overlap retention、調整前後 SMD、E-value，以及 IPTW-KM RMST。使用 `B=1000` 病人重抽樣；RMST 每次重抽樣都重新擬合 propensity，AIPW score bootstrap 則明確保留既有的 cross-fitted nuisance predictions。所有結果都只是 observational sensitivity summaries，不是因果治療效果或治療建議。
 - Phase E：先在 46 維狀態擬合 Cox direction，再把 `L_cal`、`L_exp` 與 `L_clin` 以 `0.4/0.3/0.2` 權重加入 MLP 並反向傳播。`L_exp` 使用可微的 input-gradient proxy，不是把 SHAP 放進訓練迴圈。三個 named loss-drop variants 會把對應權重設為零。
-- Phase P：驗證 replay residual 會影響 censoring-informed 訓練權重與 MLP validation-stream checkpoint selection；one-vs-rest Platt calibrator 會被 `predict_proba` 實際呼叫。Residual 定義為 `1-P(true)+alpha_e*sum_c(P_c-onehot_c)^2`。A6 會同時關閉三條路徑。
+- Phase P：驗證 replay residual 會影響 censoring-informed 訓練權重與 MLP validation-stream checkpoint selection；one-vs-rest Platt calibrator 會被 `predict_proba` 實際呼叫。Residual 定義為 `1-P(true)+alpha_e*sum_c(P_c-onehot_c)^2`。A6 會同時關閉三條路徑；`PhasePNoIPCW`、`PhasePNoCheckpoint`、`PhasePNoPlatt` 則各自只關閉一條路徑。
+- 病患層級情境對照必須使用病歷中明確記錄的治療作為 factual arm；缺少或無法辨識時會報錯，不再以最接近的治療模板替代。
+- 本倉庫尚未實作或設定 FHIR-R4 資源序列化、術語綁定、MQTT 傳輸或即時 edge message bus；這些僅是部署設計規範。
 - Locked external validation：完整 preprocessing、imputation、模型、校準與 threshold contract 必須在接觸外部資料前凍結；target anchor recalibration 會另列為 sensitivity analysis，不會冒充 strict locked validation。
 
 訓練與重現命令沒有執行 nested hyperparameter search。Within-fold validation stream 只用於 checkpoint／候選評分；候選 grid 是可選的探索工具，不能視為已完成 nested-CV 的證據。

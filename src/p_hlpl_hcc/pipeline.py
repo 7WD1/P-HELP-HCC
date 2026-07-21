@@ -237,6 +237,7 @@ class PHlplHCCPipeline:
                 "counterfactual_reporting_enabled": self.counterfactual is not None,
                 "scenario_auxiliary_role": "observed_action_shared_backbone_training_only",
                 "scenario_survival_sweep_role": "forced_treatment_block_through_main_survival_predictor",
+                "scenario_factual_arm_source": "recorded_pretreatment_action_required",
                 "scenario_action_derived_auxiliary_handling": "neutralized_for_factual_and_forced_arms",
                 "phase_p_controller_enabled": self.parallel_controller is not None,
                 "phase_p_candidate_selection": model_selection_enabled,
@@ -335,6 +336,11 @@ class PHlplHCCPipeline:
     ) -> list[dict[str, object]]:
         if self.counterfactual is None:
             raise RuntimeError("Pipeline is not fitted")
+        observed_action = int(
+            extract_observed_actions_from_df(
+                df.iloc[[row]], require_explicit=True
+            )[0]
+        )
         x, state = self.transform_state(df)
         cluster_one_hot = (
             self.clusterer.one_hot(x[row : row + 1])
@@ -344,6 +350,7 @@ class PHlplHCCPipeline:
         return self.counterfactual.sweep_patient(
             self,
             state[row],
+            observed_action=observed_action,
             cluster_one_hot=cluster_one_hot,
             patient_bootstrap_predictions=patient_bootstrap_predictions,
             guideline_confidence_by_action=guideline_confidence_by_action,

@@ -64,6 +64,7 @@ class PipelineSmokeTests(unittest.TestCase):
         raw_sweep = model.counterfactual.sweep_patient(
             model,
             state[0],
+            observed_action=5,
             clinical_only=False,
             cluster_one_hot=cluster,
             patient_bootstrap_predictions=good_draws,
@@ -76,6 +77,48 @@ class PipelineSmokeTests(unittest.TestCase):
                 for item in raw_sweep
             )
         )
+        self.assertTrue(
+            all(item["factual_action_index"] == 5 for item in raw_sweep)
+        )
+        factual_row = next(item for item in raw_sweep if item["action_index"] == 5)
+        self.assertAlmostEqual(float(factual_row["delta_vs_factual"]), 0.0)
+        with self.assertRaisesRegex(ValueError, "recorded pretreatment action"):
+            model.counterfactual.sweep_patient(
+                model,
+                state[0],
+                clinical_only=False,
+                cluster_one_hot=cluster,
+            )
+        missing_action = test.head(1).drop(
+            columns=[
+                "surgical_strategy",
+                "treatment_no_resection",
+                "treatment_ablation",
+                "treatment_resection",
+                "treatment_tace",
+                "treatment_rfa",
+                "treatment_sorafenib",
+                "treatment_combo",
+            ],
+            errors="ignore",
+        )
+        with self.assertRaisesRegex(ValueError, "recorded pretreatment action"):
+            model.counterfactual_report(missing_action, row=0)
+        unknown_action = test.head(1).copy()
+        unknown_action["surgical_strategy"] = "unknown"
+        for column in [
+            "treatment_no_resection",
+            "treatment_ablation",
+            "treatment_resection",
+            "treatment_tace",
+            "treatment_rfa",
+            "treatment_sorafenib",
+            "treatment_combo",
+        ]:
+            if column in unknown_action:
+                unknown_action[column] = 0
+        with self.assertRaisesRegex(ValueError, "recorded pretreatment action"):
+            model.counterfactual_report(unknown_action, row=0)
         phase_p = model.phase_p_observe(test.head(3))
         self.assertEqual(len(phase_p), 3)
         self.assertIn("action", phase_p[0])

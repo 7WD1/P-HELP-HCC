@@ -170,7 +170,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--ablation",
         default=None,
-        help="Named executable variant from configs/ablations.yaml (full or A1-A6).",
+        help=(
+            "Named executable variant from configs/ablations.yaml "
+            "(full, A1-A6, or a named mechanism ablation)."
+        ),
     )
     parser.add_argument(
         "--ablations-config",

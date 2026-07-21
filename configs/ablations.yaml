@@ -132,6 +132,36 @@ variants:
       model_selection_enabled: false
       platt_calibration_enabled: false
 
+  PhasePNoIPCW:
+    experiment:
+      pipeline: p_hlpl_hcc
+      phase_p_ablation_label: remove_ipcw_sample_reweighting_only
+    phase_p:
+      enabled: true
+      ipcw_sample_reweighting_enabled: false
+      model_selection_enabled: true
+      platt_calibration_enabled: true
+
+  PhasePNoCheckpoint:
+    experiment:
+      pipeline: p_hlpl_hcc
+      phase_p_ablation_label: remove_validation_residual_checkpoint_selection_only
+    phase_p:
+      enabled: true
+      ipcw_sample_reweighting_enabled: true
+      model_selection_enabled: false
+      platt_calibration_enabled: true
+
+  PhasePNoPlatt:
+    experiment:
+      pipeline: p_hlpl_hcc
+      phase_p_ablation_label: remove_post_fusion_platt_calibration_only
+    phase_p:
+      enabled: true
+      ipcw_sample_reweighting_enabled: true
+      model_selection_enabled: true
+      platt_calibration_enabled: false
+
   PatientOnly:
     phase_a:
       agent_blocks:
