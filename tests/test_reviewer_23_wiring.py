@@ -13,7 +13,7 @@ from p_hlpl_hcc.config import apply_fast_overrides, apply_named_ablation, apply_
 from p_hlpl_hcc.data import generate_fixture_hcc_records, validate_and_prepare_dataframe
 from p_hlpl_hcc.ensemble import PHlplEnsemble, PhasePPlattCalibrator
 from p_hlpl_hcc.neural import train_mlp_classifier
-from p_hlpl_hcc.parallel import phase_p_ipcw_residual_weights
+from p_hlpl_hcc.parallel import ParallelController, phase_p_ipcw_residual_weights
 from p_hlpl_hcc.parallel import phase_p_residuals
 from p_hlpl_hcc.pipeline import PHlplHCCPipeline
 from p_hlpl_hcc.society import SocietyTransformer
@@ -226,6 +226,22 @@ class Reviewer23WiringTests(unittest.TestCase):
         observed = phase_p_residuals(probabilities, truth, np.array([1, 0]), classification_calibration_mix=0.5)
         target = np.eye(3)[truth]
         expected = 1.0 - probabilities[np.arange(2), truth] + 0.5 * np.square(probabilities - target).sum(axis=1)
+        self.assertTrue(np.allclose(observed, expected))
+
+    def test_phase_p_soft_update_matches_manuscript_proximal_equation(self):
+        controller = ParallelController(
+            online_learning_rate=0.2,
+            proximal_weight=0.1,
+        )
+        weights = np.array([0.55, 0.30, 0.15])
+        gradient = np.array([0.20, -0.10, -0.10])
+        anchor = np.array([0.40, 0.35, 0.25])
+        expected = weights - 0.2 * gradient - 0.1 * (weights - anchor)
+        expected = np.maximum(expected, 0.0)
+        expected /= expected.sum()
+
+        observed = controller.soft_update_fusion_weights(weights, gradient, anchor)
+
         self.assertTrue(np.allclose(observed, expected))
 
     def test_phase_p_ipcw_weights_are_residual_and_censoring_informed(self):

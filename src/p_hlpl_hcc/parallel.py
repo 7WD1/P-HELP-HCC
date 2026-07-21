@@ -245,8 +245,10 @@ class ParallelController:
     ) -> np.ndarray:
         """Apply the paper's proximal online step to fusion weights."""
 
-        updated = weights - self.online_learning_rate * (
-            gradient + self.proximal_weight * (weights - anchor_weights)
+        updated = (
+            weights
+            - self.online_learning_rate * gradient
+            - self.proximal_weight * (weights - anchor_weights)
         )
         updated = np.maximum(updated, 0.0)
         total = updated.sum()
