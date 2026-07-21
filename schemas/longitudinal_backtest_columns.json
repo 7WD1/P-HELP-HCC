@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "units": {
+    "start_month": "month",
+    "end_month": "month",
+    "tumor_diameter_start_cm": "cm",
+    "tumor_diameter_observed_cm": "cm",
+    "growth_rate_per_month": "1/month",
+    "treatment_shrinkage_rate_per_month": "1/month",
+    "fibrosis_start": "unit_interval",
+    "fibrosis_observed": "unit_interval",
+    "kappa_age_per_month": "1/month",
+    "kappa_treatment_per_month": "1/month",
+    "kappa_recovery_per_month": "1/month",
+    "recovery_score": "unit_interval",
+    "loco_regional_action": "binary"
+  }
+}

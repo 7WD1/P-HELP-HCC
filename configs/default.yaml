@@ -1,8 +1,9 @@
 project:
-  name: P-HELP-HCC
+  name: P-HLPL-HCC
   task: eight_class_hcc_survival
 
 data:
+  objective: hard_classification
   target_time_col: overall_survival_months
   event_col: event
   label_col: survival_class
@@ -16,30 +17,30 @@ splits:
   outer_folds: 5
   inner_val_fraction: 0.2
   seeds: [42, 123, 2024, 31415, 65537]
-  stratify_on: [survival_class, surgical_strategy]
+  stratify_on: [survival_class, event]
 
 phase_a:
-  delta_t_months: 1
-  horizon_months: 72
+  state_representation_enabled: true
+  tumor_update_enabled: true
+  fibrosis_update_enabled: true
+  dynamics_input_scale: physical_units_required
+  agent_blocks:
+    patient: true
+    tumor: true
+    liver: true
+    treatment: true
+    guideline: true
+    explanation: true
   d_max_cm: 20.0
-  growth_rate_lognormal_mu: -1.4
-  growth_rate_lognormal_sigma: 0.6
-  tumor_growth_prior_mean: 0.07
-  tumor_growth_prior_std: 0.03
-  afp_alpha_per_month: 0.04
-  afp_beta: 1.8
-  fibrosis_kappa_age_per_month: 0.005
-  fibrosis_kappa_treatment_per_month: 0.010
-  fibrosis_kappa_recovery_per_month: 0.015
-  fibrosis_age_rate_per_year: 0.002
-  fibrosis_treatment_bump: 0.015
-  fibrosis_recovery_rate: 0.020
-  child_pugh_feasibility_cap: B
   process_noise_std: 0.05
 
 phase_c:
   learners: [logistic, gradient_boosting_or_xgboost, random_forest, mlp]
   fusion_alpha: 0.60
+  scenario_auxiliary:
+    enabled: true
+    loss_weight: 0.20
+    n_actions: 6
   random_forest:
     n_estimators: 500
     max_depth: 10
@@ -65,11 +66,13 @@ phase_c:
     focal_gamma: 1.5
     class_weights: [1.0, 1.5, 1.7, 2.1, 2.5, 2.7, 2.3, 4.5]
   clustering:
+    enabled: true
     k: 4
     pca_variance: 0.90
     init: k-means++
     n_init: 20
   counterfactual:
+    enabled: true
     actions: [None, Resection, TACE, RFA, Sorafenib, Combo]
     bootstrap_replicates: 200
     propensity_gate: [0.05, 0.95]
@@ -77,24 +80,40 @@ phase_c:
     guideline_confidence_threshold: 0.30
     horizon_months: 72
     report_horizon_months: 12
+  observational_analysis:
+    pretreatment_only: true
+    nuisance_crossfit_folds: 5
+    estimator: augmented_inverse_probability_weighting
+    propensity_trim: 0.05
+    patient_bootstrap_replicates: 1000
+    causal_claim: false
 
 phase_e:
   cox:
+    enabled: true
     epochs: 300
     learning_rate: 0.03
     l1: 0.001
     l2: 0.001
-  shap:
-    background_samples: 200
-    fallback_permutation_repeats: 5
   loss:
+    enabled: true
     lambda_cal: 0.4
     lambda_exp: 0.3
     lambda_clin: 0.2
     tanh_kappa: 5.0
-    refresh_epochs: 10
+    clinical_risk_state_indices: [12, 13, 14, 15, 16, 17, 25]
+    clinical_risk_state_signs: [1, 1, 1, 1, 1, 1, 1]
 
 phase_p:
+  enabled: true
+  ipcw_sample_reweighting_enabled: true
+  residual_weight_strength: 1.0
+  minimum_positive_weight: 0.25
+  maximum_weight: 4.0
+  model_selection_enabled: true
+  checkpoint_residual_weight: 0.20
+  candidate_residual_weight: 0.10
+  platt_calibration_enabled: true
   soft_error_threshold: 0.18
   hard_error_threshold: 0.32
   abstention_entropy_soft: 0.65
@@ -110,7 +129,9 @@ safeguards:
     enabled: false
     framing: future_work
     dp_sgd:
-      epsilon_per_round: 4.0
+      epsilon_per_round: 0.4
+      planned_rounds: 100
+      epsilon_total_design_budget: 4.0
       delta: 1.0e-5
       noise_multiplier_sigma: 1.1
       l2_clip_C: 1.0

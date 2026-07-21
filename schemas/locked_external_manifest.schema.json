@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Frozen Internal-673 inference-contract manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "training_cohort",
+    "frozen_before_external_access",
+    "model_sha256",
+    "preprocessing_frozen",
+    "imputation_frozen",
+    "calibration_frozen",
+    "thresholds_frozen",
+    "preprocessing_contract_sha256",
+    "imputation_contract_sha256",
+    "calibration_contract_sha256",
+    "decision_contract_sha256"
+  ],
+  "properties": {
+    "schema_version": {"const": 2},
+    "training_cohort": {"const": "Internal-673"},
+    "frozen_before_external_access": {"const": true},
+    "model_sha256": {"$ref": "#/$defs/sha256"},
+    "preprocessing_frozen": {"const": true},
+    "imputation_frozen": {"const": true},
+    "calibration_frozen": {"const": true},
+    "thresholds_frozen": {"const": true},
+    "preprocessing_contract_sha256": {"$ref": "#/$defs/sha256"},
+    "imputation_contract_sha256": {"$ref": "#/$defs/sha256"},
+    "calibration_contract_sha256": {"$ref": "#/$defs/sha256"},
+    "decision_contract_sha256": {"$ref": "#/$defs/sha256"},
+    "preprocessing_summary": {
+      "type": "object",
+      "required": ["curated_dimension", "missingness_sidecar"],
+      "properties": {
+        "curated_dimension": {"const": 67},
+        "missingness_sidecar": {"const": true}
+      },
+      "additionalProperties": false
+    },
+    "imputation_summary": {
+      "type": "object",
+      "required": ["strategy", "fit_scope"],
+      "properties": {
+        "strategy": {"const": "median"},
+        "fit_scope": {"const": "Internal-673 training partition only"}
+      },
+      "additionalProperties": false
+    },
+    "decision_summary": {"type": "object"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "additionalProperties": true
+}

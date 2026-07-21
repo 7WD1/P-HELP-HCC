@@ -1,0 +1,8 @@
+extends: default.yaml
+
+data:
+  objective: censoring_aware_discrete_time
+
+experiment:
+  name: discrete_time_survival_sensitivity
+  evidentiary_status: requires_real_cohort_and_controlled_audit_packet

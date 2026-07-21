@@ -1,0 +1,224 @@
+description: Executable component configurations for the full model and Reviewer 2.3 ablations.
+
+variants:
+  full:
+    experiment:
+      pipeline: p_hlpl_hcc
+    phase_c:
+      scenario_auxiliary:
+        enabled: true
+      counterfactual:
+        enabled: true
+    phase_p:
+      enabled: true
+      ipcw_sample_reweighting_enabled: true
+      model_selection_enabled: true
+      platt_calibration_enabled: true
+
+  A1:
+    experiment:
+      pipeline: coxph_baseline
+    data:
+      objective: coxph_right_censored
+    phase_c:
+      learners: []
+      clustering:
+        enabled: false
+      scenario_auxiliary:
+        enabled: false
+      counterfactual:
+        enabled: false
+    phase_p:
+      enabled: false
+      ipcw_sample_reweighting_enabled: false
+      model_selection_enabled: false
+      platt_calibration_enabled: false
+
+  A2:
+    experiment:
+      pipeline: p_hlpl_hcc
+    phase_a:
+      state_representation_enabled: false
+    phase_c:
+      learners: [logistic, gradient_boosting_or_xgboost, random_forest]
+      clustering:
+        enabled: false
+      scenario_auxiliary:
+        enabled: false
+      counterfactual:
+        enabled: false
+    phase_e:
+      cox:
+        enabled: false
+      loss:
+        enabled: false
+    phase_p:
+      enabled: false
+      ipcw_sample_reweighting_enabled: false
+      model_selection_enabled: false
+      platt_calibration_enabled: false
+
+  A3:
+    experiment:
+      pipeline: p_hlpl_hcc
+    phase_a:
+      state_representation_enabled: true
+    phase_c:
+      learners: [logistic, gradient_boosting_or_xgboost, random_forest, mlp]
+      clustering:
+        enabled: false
+      scenario_auxiliary:
+        enabled: false
+      counterfactual:
+        enabled: false
+    phase_e:
+      cox:
+        enabled: false
+      loss:
+        enabled: false
+    phase_p:
+      enabled: false
+      ipcw_sample_reweighting_enabled: false
+      model_selection_enabled: false
+      platt_calibration_enabled: false
+
+  A4:
+    experiment:
+      pipeline: p_hlpl_hcc
+    phase_a:
+      state_representation_enabled: true
+    phase_c:
+      learners: [logistic, gradient_boosting_or_xgboost, random_forest, mlp]
+      clustering:
+        enabled: true
+      scenario_auxiliary:
+        enabled: false
+      counterfactual:
+        enabled: false
+    phase_e:
+      loss:
+        enabled: false
+    phase_p:
+      enabled: false
+      ipcw_sample_reweighting_enabled: false
+      model_selection_enabled: false
+      platt_calibration_enabled: false
+
+  A5:
+    experiment:
+      pipeline: p_hlpl_hcc
+    phase_c:
+      scenario_auxiliary:
+        enabled: false
+      counterfactual:
+        enabled: false
+    phase_p:
+      enabled: true
+      ipcw_sample_reweighting_enabled: true
+      model_selection_enabled: true
+      platt_calibration_enabled: true
+
+  A6:
+    experiment:
+      pipeline: p_hlpl_hcc
+    phase_c:
+      scenario_auxiliary:
+        enabled: true
+      counterfactual:
+        enabled: true
+    phase_p:
+      enabled: false
+      ipcw_sample_reweighting_enabled: false
+      model_selection_enabled: false
+      platt_calibration_enabled: false
+
+  PatientOnly:
+    phase_a:
+      agent_blocks:
+        patient: true
+        tumor: false
+        liver: false
+        treatment: false
+        guideline: false
+        explanation: false
+
+  DropPatient:
+    phase_a:
+      agent_blocks:
+        patient: false
+
+  DropTumor:
+    phase_a:
+      agent_blocks:
+        tumor: false
+
+  DropLiver:
+    phase_a:
+      agent_blocks:
+        liver: false
+
+  DropTreatment:
+    phase_a:
+      agent_blocks:
+        treatment: false
+
+  DropGuideline:
+    phase_a:
+      agent_blocks:
+        guideline: false
+
+  DropExplanation:
+    phase_a:
+      agent_blocks:
+        explanation: false
+
+  NoCal:
+    phase_e:
+      loss:
+        lambda_cal: 0.0
+
+  NoExp:
+    phase_e:
+      loss:
+        lambda_exp: 0.0
+
+  NoClin:
+    phase_e:
+      loss:
+        lambda_clin: 0.0
+
+  PredOnlyFocal:
+    experiment:
+      loss_ablation_label: prediction_only_class_weighted_focal
+    phase_e:
+      loss:
+        lambda_cal: 0.0
+        lambda_exp: 0.0
+        lambda_clin: 0.0
+
+  PredCal:
+    experiment:
+      loss_ablation_label: focal_plus_calibration
+    phase_e:
+      loss:
+        lambda_cal: 1.0
+        lambda_exp: 0.0
+        lambda_clin: 0.0
+
+  PredCalExp:
+    experiment:
+      loss_ablation_label: focal_plus_calibration_plus_explanation
+    phase_e:
+      loss:
+        lambda_cal: 1.0
+        lambda_exp: 1.0
+        lambda_clin: 0.0
+
+  PredCalExpClinUnit:
+    experiment:
+      loss_ablation_label: focal_plus_all_auxiliary_unit_weights
+    phase_e:
+      loss:
+        lambda_cal: 1.0
+        lambda_exp: 1.0
+        lambda_clin: 1.0

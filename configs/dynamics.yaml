@@ -1,0 +1,34 @@
+description: Executable rule switches for the reported dynamics-only sensitivity paths. Numerical claims require longitudinal source data.
+
+variants:
+  static_only:
+    experiment:
+      scope: physical_unit_longitudinal_backtest_only
+      evidentiary_status: configuration_only_requires_longitudinal_inputs
+    phase_a:
+      tumor_update_enabled: false
+      fibrosis_update_enabled: false
+
+  gompertz_only:
+    experiment:
+      scope: physical_unit_longitudinal_backtest_only
+      evidentiary_status: configuration_only_requires_longitudinal_inputs
+    phase_a:
+      tumor_update_enabled: true
+      fibrosis_update_enabled: false
+
+  fibrosis_only:
+    experiment:
+      scope: physical_unit_longitudinal_backtest_only
+      evidentiary_status: configuration_only_requires_longitudinal_inputs
+    phase_a:
+      tumor_update_enabled: false
+      fibrosis_update_enabled: true
+
+  full_dynamics:
+    experiment:
+      scope: physical_unit_longitudinal_backtest_only
+      evidentiary_status: configuration_only_requires_longitudinal_inputs
+    phase_a:
+      tumor_update_enabled: true
+      fibrosis_update_enabled: true

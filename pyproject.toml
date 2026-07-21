@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "p-help-hcc"
 version = "0.1.0"
-description = "P-HELP-HCC reproducible code derived from the paper methods and experiments"
+description = "P-HLPL-HCC reproducible code derived from the paper methods and experiments"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
@@ -19,13 +19,16 @@ dependencies = [
   "scikit-learn>=1.2",
   "torch>=2.0",
   "joblib>=1.2",
-  "PyYAML>=6.0"
+  "PyYAML>=6.0",
+  "scipy>=1.10"
 ]
 
 [project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
 paper = [
   "xgboost>=2.0",
-  "shap>=0.44",
   "lifelines>=0.27",
   "openpyxl>=3.1",
   "pyarrow>=14"
@@ -35,7 +38,7 @@ paper = [
 where = ["src"]
 
 [project.scripts]
-phelp-train = "p_help_hcc.train:main"
-phelp-test = "p_help_hcc.test:main"
-phelp-validate = "p_help_hcc.validate:main"
-phelp-split = "p_help_hcc.splits:main"
+phelp-train = "p_hlpl_hcc.train:main"
+phelp-test = "p_hlpl_hcc.test:main"
+phelp-validate = "p_hlpl_hcc.validate:main"
+phelp-split = "p_hlpl_hcc.splits:main"
