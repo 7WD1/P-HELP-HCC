@@ -34,7 +34,7 @@ P-HLPL-HCC is a parallel-system survival stratification framework for hepatocell
 
 | Phase | Theme | Output |
 |-------|-------|--------|
-| **A** | Artificial society of six interacting agents | 46-dim agent state `S_i` |
+| **A** | Structured representation with six deterministic, separately maskable state blocks | 46-dim patient state `S_i` |
 | **C** | Computational experiments for survival and bounded treatment scenarios | Class probabilities, RMST gaps, observational scenario effects |
 | **E** | Multi-layer explainable survival model | Cox HR, attribution proxies, phenotype, scenario consistency |
 | **P** | Parallel execution replay monitor | Silent-shadow residual logs and review triggers |
@@ -49,8 +49,8 @@ The private 673-patient cohort is **not** redistributed. The code separates two 
 ```text
    x_i  --> +-----------------+ S_i --> +--------------------+ --> Phase E
    67-dim   | Phase A         | 46-dim  | Phase C            |     +-----------------+
-            | society         |         | 4-learner ensemble |     | Cox-EN, attrib.,|
-            | transformer     |         | K-means K=4        |     | cluster, scen., |
+            | deterministic   |         | 4-learner ensemble |     | Cox-EN, attrib.,|
+            | projector       |         | K-means K=4        |     | cluster, scen., |
             +-----------------+         | scenario sweep     |     | replay layers   |
                     ^                   +--------------------+     +-----------------+
                     |                            |                         |
@@ -61,7 +61,7 @@ The private 673-patient cohort is **not** redistributed. The code separates two 
             +-----------------+         +--------------------+
 ```
 
-The K-means phenotype branch operates on the **67-dim curated input**. The survival ensemble and scenario sweeps operate on the **46-dim agent state**. Phase P uses `1-P(true)+alpha_e*multiclass-Brier` as its replay residual and combines it with censoring-informed/IPCW sample weighting; hard-classification rows require a mature endpoint.
+The K-means phenotype branch operates on the **67-dim curated input**. The survival ensemble and scenario sweeps operate on the **46-dim patient state**. Phase P uses `1-P(true)+alpha_e*multiclass-Brier` as its replay residual and combines it with censoring-informed/IPCW sample weighting; hard-classification rows require a mature endpoint.
 
 ## Implemented Paper Components
 
@@ -167,7 +167,7 @@ The released `configs/default.yaml` encodes the current paper selections. The mo
 | Block | Symbol | Value |
 |-------|:------:|------:|
 | Curated input dim | `d` | `67` |
-| Agent state dim | `d_S` | `46` |
+| Patient state dim | `d_S` | `46` |
 | Repeated outer CV | folds x seeds | `5 x 5` |
 | Within-fold validation stream | train/validation fraction | `0.8 / 0.2` |
 | Phenotypes | `K_c*` | `4` |
