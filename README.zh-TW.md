@@ -1,255 +1,81 @@
-<div align="center">
+# P-HLPL-HCC
 
-# P-HELP-HCC
+**用於肝細胞癌八類存活分層的平行分層可解釋學習流程**
 
-**面向肝細胞癌存活分層的平行階層可解釋學習管線**
+本專案是論文隨附的研究程式。它提供可執行的分析路徑與非證據性的 smoke test；不公開 673 位病人的私有資料，也不宣稱已在缺少受控執行產物時重現論文數值。
 
-論文配套參考實作，嚴格遵照 Phase&nbsp;A / C / E / P 四階段方法章節與八分類 HCC 實驗設定。
+[English](README.md) | **繁體中文**
 
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c.svg)](https://pytorch.org/)
-[![scikit-learn](https://img.shields.io/badge/scikit--learn-1.2%2B-f7931e.svg)](https://scikit-learn.org/)
-[![Status](https://img.shields.io/badge/status-research--code-orange.svg)](#)
+## 已實作範圍
 
-[English](README.md) &nbsp;|&nbsp; **繁體中文**
+- 資料端點：從診斷索引日起計算存活時間；在 72 個月以前失訪且尚未死亡者，不會被強制指定八類硬標籤。
+- 切分：五個種子下的病人層級五折交叉驗證，預設同時依存活類別與事件指標分層；小樣本 strata 會採用確定性的降級策略。
+- 離散時間存活：七個區間 hazard 加上 72 個月後的 C8 尾端機率；訓練、驗證與評估均使用只在訓練折擬合的 reverse-Kaplan--Meier IPCW cell weights。預測表會輸出七個 hazard 欄位，風險／事件／設限表包含 72 個月尾端列。
+- 六區塊病人狀態：Patient、Tumor、Liver、Treatment、Guideline 與 Explanation 均有可執行的 drop variant。主分類器只使用標準化的靜態狀態。
+- 物理單位動態規則：以公分與月份表示的 Gompertz 與纖維化公式只可用於獨立的 longitudinal back-test；不得套用到標準化 latent state。公開 back-test 未實作獨立 AFP transition。未提供真實縱向輸入時，設定檔本身不是數值證據。
+- Phase C：四個 base learners、Brier-optimal fusion、K-means phenotype branch，以及共用 backbone 的六類 scenario auxiliary head。
+- 單一病人 scenario：propensity 只使用 Treatment 之前的 Patient/Tumor/Liver 狀態；每個 arm 都會把 factual-treatment-derived auxiliary coordinates 設為共同中性值；臨床顯示需要恰好 `B=200` 個有限的外部病人層級 bootstrap 預測、guideline confidence、propensity overlap 與不跨零的信賴區間。缺少任一輸入時，預設臨床顯示為空；門檻為 `rho*=0.30`。
+- Cohort-level observational analysis：輸出 naive、IPTW、cross-fitted AIPW/DR、overlap retention、調整前後 SMD、E-value，以及 IPTW-KM RMST。使用 `B=1000` 病人重抽樣；RMST 每次重抽樣都重新擬合 propensity，AIPW score bootstrap 則明確保留既有的 cross-fitted nuisance predictions。所有結果都只是 observational sensitivity summaries，不是因果治療效果或治療建議。
+- Phase E：先在 46 維狀態擬合 Cox direction，再把 `L_cal`、`L_exp` 與 `L_clin` 以 `0.4/0.3/0.2` 權重加入 MLP 並反向傳播。`L_exp` 使用可微的 input-gradient proxy，不是把 SHAP 放進訓練迴圈。三個 named loss-drop variants 會把對應權重設為零。
+- Phase P：驗證 replay residual 會影響 censoring-informed 訓練權重與 MLP validation-stream checkpoint selection；one-vs-rest Platt calibrator 會被 `predict_proba` 實際呼叫。Residual 定義為 `1-P(true)+alpha_e*sum_c(P_c-onehot_c)^2`。A6 會同時關閉三條路徑。
+- Locked external validation：完整 preprocessing、imputation、模型、校準與 threshold contract 必須在接觸外部資料前凍結；target anchor recalibration 會另列為 sensitivity analysis，不會冒充 strict locked validation。
 
-**作者.** 姜文棟（淡江大學, `wendongjiang@ieee.org`）·
-林聰蓉（淡江大學 / 台北市立聯合醫院仁愛院區, `dab70@tpech.gov.tw`）·
-張志勇（淡江大學, `cychang@mail.tku.edu.tw`）。
-
-**論文已投稿至 IEEE Internet of Things Journal（IEEE IoTJ）。**
-
-</div>
-
----
-
-## 目錄
-
-1. [專案概述](#專案概述)
-2. [架構一覽](#架構一覽)
-3. [實作的論文元件](#實作的論文元件)
-4. [快速開始](#快速開始)
-5. [專案結構](#專案結構)
-6. [設定檔與超參數](#設定檔與超參數)
-7. [真實資料合約](#真實資料合約)
-8. [驗證流程](#驗證流程)
-9. [可重現性說明](#可重現性說明)
-10. [引用方式](#引用方式)
-
----
-
-## 專案概述
-
-P-HELP-HCC 是一個面向肝細胞癌（hepatocellular carcinoma, HCC）的平行系統存活分層框架，將八分類預後任務組織為以下四個 ACP 階段：
-
-| 階段 | 主題 | 輸出 |
-|------|------|------|
-| **A** | 由六個互動智能體組成的人工社會 | 46 維智能體狀態 $\mathbf{S}_i$ |
-| **C** | 計算實驗（存活、手術情境、反事實） | 類別機率、RMST 差距、情境效應 |
-| **E** | 多層可解釋存活模型 | Cox HR、SHAP、表型、反事實、回饋 |
-| **P** | 平行執行與自適應更新 | 串流虛擬–真實誤差控制器 |
-
-私有的 673 名病人佇列**不**會隨此倉庫散佈。本程式碼支援兩種資料模式：
-
-- 符合[資料合約](#真實資料合約)的真實 CSV / TSV / XLSX / Parquet 輸入；
-- 以論文公開佇列統計為依據生成的合成 HCC 佇列，用於乾跑與可重現性檢核。
-
----
-
-## 架構一覽
-
-```
-                                                                                    
-            +-----------------+         +--------------------+   Phase E            
-   x_i  --> | Phase A         | S_i --> | Phase C            | -----------+         
-  67-dim    | Society         | 46-dim  | 4 學習器集成       |            v         
-            | Transformer     |         | + K-means K=4      |   +-----------------+
-            +-----------------+         | + 反事實掃掠       |   | Cox-EN, SHAP,   |
-                  ^                     +--------------------+   | cluster, CF,    |
-                  |                              |               | feedback layers |
-                  |                              v               +-----------------+
-            +-----------------+         +--------------------+            |         
-            | Phase P         | <------ | 虛擬–真實誤差     |  <---------+         
-            | controller      |  retrain| 串流監測          |   IPCW Brier        
-            +-----------------+         +--------------------+                      
-```
-
-> K-means 表型分支在**67 維精選輸入**（公式 7）上運作；存活集成與反事實滾動則在**46 維智能體狀態**（公式 4）上運作；Phase P 校準損失採用公式 13 的 **IPCW 多項式 Brier**，當分母低於數值底限時自動退化為僅成熟（matured-only）版本。
-
----
-
-## 實作的論文元件
-
-- **資料層**：資料集載入、規範欄位驗證、存活標籤推導，以及 67 維精選特徵 schema（第 8.1 節）。
-- **資料切分**：以五個種子 `{42, 123, 2024, 31415, 65537}` 進行病人層級重複 5-fold 交叉驗證，分層鍵為八分類標籤與手術策略軸（第 8.2 節）。
-- **Phase A**：人工社會投影至 $d_S{=}46$ 智能體狀態，並使用表 II 校準的動力學常數（Gompertz 腫瘤成長、AFP 對數域遞推、肝纖維化更新、治療策略、Child–Pugh 可行性上限）。
-- **Phase C — 存活集成**：四個異質基學習器以 Brier 最佳融合：正則化多項式邏輯回歸、XGBoost（缺則退化為 Gradient Boosting）、校準隨機森林、加類別權重之焦點損失 PyTorch MLP（第 5.1 節）。
-- **Phase C — 表型分支**：保留 95% 變異量的 PCA 加上 $K{=}4$ 之 K-means，輸出 silhouette / Davies–Bouldin / Calinski–Harabasz 等內部有效性指標。
-- **Phase C — 反事實掃掠**：六動作集 `{None, Resection, TACE, RFA, Sorafenib, Combo}`、傾向分數閘 $[0.05,\,0.95]$、指南信心門檻 $\rho^{\star}{=}0.6$、$B{=}200$ 自助重抽，並輸出 $P(\mathrm{OS}{>}12\,\mathrm{m})$ 三方案治療臂報告（第 5.4 節 + 演算法 1）。
-- **Phase E**：以 PyTorch 偏概似實作的 Cox 彈性網風險層、SHAP 與排列重要性工具、Cox–SHAP 排序對齊、$\tanh$ 銳度 $\kappa{=}5$ 的解釋一致性損失（第 6 節）。
-- **Phase P**：串流虛擬–真實誤差控制器，門檻 $\bar{e}_{\text{soft}}{=}0.18$ / $\bar{e}_{\text{hard}}{=}0.32$、線上步長 $\eta{=}10^{-4}$、近端錨定 $\lambda_w{=}10^{-3}$、監測視窗 $n_b{=}30$、再訓練緩衝 $n_r{=}200$、誤差混合權重 $\alpha_e{=}0.5$（第 7 節 + 演算法 2）。
-
----
+訓練與重現命令沒有執行 nested hyperparameter search。Within-fold validation stream 只用於 checkpoint／候選評分；候選 grid 是可選的探索工具，不能視為已完成 nested-CV 的證據。
 
 ## 快速開始
-
-以可編輯模式安裝後，對合成佇列執行一次冒煙測試：
 
 ```powershell
 python -m pip install -e .
 
-# 1. 生成符合論文類別 / 手術策略比例的小型合成佇列
-python -m p_help_hcc.data make-synthetic --out data/synthetic_hcc.csv --n 120
+# 僅供 schema、unit 與 smoke 軟體測試；fixture 記錄不是臨床觀察，
+# 不得用於論文實驗、數值重現或科學推論。
+python -m p_hlpl_hcc.data make-fixture --out data/fixture_hcc.csv --n 120
+python -m p_hlpl_hcc.train --config configs/default.yaml `
+  --data data/fixture_hcc.csv --output outputs/smoke --fast
 
-# 2. 以 --fast 冒煙設定訓練完整管線（Phase A -> C -> E）
-python -m p_help_hcc.train --config configs/default.yaml `
-                           --data   data/synthetic_hcc.csv `
-                           --output outputs/smoke `
-                           --fast
+# 設限感知的離散時間路徑。
+python -m p_hlpl_hcc.train --config configs/discrete_time.yaml `
+  --data data/fixture_hcc.csv --output outputs/discrete --fast
 
-# 3. 對保留折進行評估
-python -m p_help_hcc.test --model outputs/smoke/fold_0/model.joblib `
-                          --data  data/synthetic_hcc.csv `
-                          --split outputs/smoke/splits_seed_42.json `
-                          --fold  0
-
-# 4. 執行佇列層級的驗證程序
-python -m p_help_hcc.validate --data  data/synthetic_hcc.csv `
-                              --model outputs/smoke/fold_0/model.joblib
+# 單元與整合測試。
+python -m pytest -q
 ```
 
-> 完整的論文規模設定（5 種子 × 5 折 = 25 次執行、完整估計器數量、100 個 MLP epoch）寫在 `configs/default.yaml` 內。當真實佇列與目標工作站準備就緒後，再移除 `--fast` 旗標。
+物理單位動態只能透過獨立 back-test 執行：
 
----
-
-## 專案結構
-
-```
-code/
-├── configs/
-│   ├── default.yaml          # 論文規模超參數
-│   └── search_grid.yaml      # 第 8.2 節之巢狀搜尋網格
-├── data/                     # 不含 PHI 的本機輸入目錄（被 git 忽略）
-├── outputs/                  # 執行產物（被 git 忽略）
-├── scripts/run_smoke.ps1     # 一鍵冒煙腳本
-├── src/p_help_hcc/
-│   ├── society.py            # Phase A：SocietyTransformer 與動力學
-│   ├── clustering.py         # Phase C：PCA + K-means 表型路由
-│   ├── ensemble.py           # Phase C：4 學習器 Brier 最佳堆疊
-│   ├── neural.py             # Phase C：焦點損失 MLP
-│   ├── counterfactual.py     # Phase C：情境掃掠 + 傾向分數閘
-│   ├── cox.py                # Phase E：Cox 彈性網（Torch）
-│   ├── explain.py            # Phase E：SHAP + IPCW Brier + L_exp / L_clin
-│   ├── parallel.py           # Phase P：串流誤差控制器 + 棄答規則
-│   ├── safeguards.py         # DP-SGD / Mahalanobis OOD / 雜湊鏈稽核 / IRB 閘
-│   ├── pipeline.py           # 端到端 PHelpHCCPipeline
-│   ├── splits.py             # 病人層級重複 5-fold 切分
-│   ├── preprocessing.py      # 67 特徵精選與插補
-│   ├── data.py               # 資料載入與合成佇列生成器
-│   └── train.py / test.py / validate.py
-└── tests/                    # 單元與冒煙測試
+```powershell
+python scripts/run_dynamics_backtest.py --data <longitudinal.csv> `
+  --variant full_dynamics --output-dir outputs/dynamics
 ```
 
----
+主分類器明確拒絕 `--dynamics`，避免把公分／月份公式錯誤套到標準化狀態。
 
-## 設定檔與超參數
+## 主要設定
 
-`configs/default.yaml` 已將論文最終選定值編碼。最常被查閱的數值如下：
-
-| 區塊 | 符號 | 數值 |
-|------|:----:|------:|
-| 精選輸入維度 | $d$ | $67$ |
-| 智能體狀態維度 | $d_S$ | $46$ |
-| 外層 / 內層 CV | folds × seeds | $5 \times 5$ |
-| 表型數 | $K_c^{\star}$ | $4$ |
-| MLP 主幹 | hidden / dropout / 啟動函式 | $[256,128,64]$ / $0.2$ / GELU |
-| 最佳化器 | Adam, lr, batch, epochs, patience | $10^{-3}$, $32$, $100$, $15$ |
-| 焦點損失 | $\gamma$ | $1.5$ |
-| 隨機森林 | $n_{\text{est}}$, max depth | $500$, $10$ |
-| XGBoost | $n_{\text{est}}$, lr, max depth | $500$, $0.05$, $6$ |
-| 融合 | $\alpha_{\text{fuse}}$ | $0.60$ |
-| PCA 保留變異量 | $r_{\text{PCA}}$ | $0.90$（論文 $\approx 24\pm2$ 主成分） |
-| 反事實 | $B$, propensity gate, $\rho_{\text{trim}}$, $\rho^{\star}$ | $200$, $[0.05,0.95]$, $0.05$, $0.30$ |
-| Phase E 損失 | $\gamma_1{=}\lambda_{\text{cal}}$ / $\gamma_2{=}\lambda_{\text{exp}}$ / $\gamma_3{=}\lambda_{\text{clin}}$ | $0.4$ / $0.3$ / $0.2$ |
-| Phase E 損失 | $\tanh$ 銳度 $\kappa$ | $5.0$ |
-| Cox 彈性網 | epochs, lr, $\lambda_{\ell_1}$, $\lambda_{\ell_2}$ | $300$, $0.03$, $10^{-3}$, $10^{-3}$ |
-| Phase P 串流觸發 | $\bar e_{\text{soft}}$ / $\bar e_{\text{hard}}$ | $0.18$（再校準） / $0.32$（重訓） |
-| Phase P 棄答熵 | $p_{\text{soft}}$ / $p_{\text{hard}}$ | $0.65$ / $0.85$ |
-| Phase P 線上步長 / 漂移懲罰 | $\eta_w$ / $\lambda_w$ | $5{\times}10^{-3}$ / $10^{-2}$ |
-| Phase P 視窗 | $n_b$ / $n_r$ | $30$ / $200$ |
-| 纖維化 $\kappa_{\text{age}}$/$\kappa_{\text{trt}}$/$\kappa_{\text{rec}}$ | per month | $0.005$ / $0.010$ / $0.015$ |
-| 類別權重 | C1 … C8 | `[1.0, 1.5, 1.7, 2.1, 2.5, 2.7, 2.3, 4.5]` |
-| DP-SGD（聯邦，Future Work） | $(\varepsilon, \delta)$ / $\sigma$ / $C$ | $(4.0, 10^{-5})$ / $1.1$ / $1$ |
-| Mahalanobis OOD | 各類質心百分位 | $99$ |
-
-巢狀超參搜尋網格寫在 `configs/search_grid.yaml`，與第 8.2 節的描述逐格對應。
-
----
-
-## 真實資料合約
-
-**必填欄位**
-
-| 欄位 | 型別 | 說明 |
-|---|---|---|
-| `overall_survival_months` | float | 自診斷起的整體存活月數 |
-| `event` | int (0/1) | $1$ 表示死亡 / 事件，$0$ 表示審查 |
-
-**可選欄位（缺漏時自動推導）**
-
-| 欄位 | 允許值 |
+| 區塊 | 設定 |
 |---|---|
-| `survival_class` | `0..7` 或 `C1..C8` |
-| `surgical_strategy` | `none` / `ablation` / `resection` |
-| `dominant_aetiology` | `HBV` / `HCV` / `NBNC` |
-| 臨床共變量 | `age`、`sex_male`、`tumor_size_cm`、`afp`、`albumin`、`bilirubin`、`inr`、`ajcc_stage`、治療旗標等 |
+| 重複 outer CV | 5 folds × 5 seeds |
+| Within-fold validation | 20% |
+| 輸入／病人狀態 | 67／46 維 |
+| 存活區間 | 0、6、12、24、36、48、60、72 個月 |
+| Scenario／cohort bootstrap | 200／1000 |
+| Propensity trim／guideline threshold | 0.05／0.30 |
+| Phase-E loss weights | 0.4／0.3／0.2 |
+| Phase-P residual mix | 0.5 |
 
-預處理管線會把可用的臨床欄位映射到穩定的 67 特徵 schema（`x_00` … `x_66`）。若這些 `x_*` 欄位本就存在，則被視為既有精選特徵矩陣。自由文字或識別欄位永遠不會序列化進入模型成品。
+## 真實資料與證據邊界
 
-> **資料衛生**：請勿將 PHI 放入 `data/` 進行散佈。常見表格格式以及 `data/raw/`、`data/private/` 目錄已預設由 Git 忽略。`joblib` 與 pickle 模型在載入時可執行任意程式碼，因此僅應載入本機產出或來自可信 release 的模型。
+必要欄位為 `overall_survival_months` 與二元 `event`。`survival_class` 可提供 `0..7`、`1..8` 或 `C1..C8`；若未提供且端點可確定，程式會依區間產生。自由文字與識別欄位不會寫入模型。
 
-Excel 與 Parquet 載入需要對應的 pandas 引擎，例如 `.xlsx` 需要 `openpyxl`、`.parquet` 需要 `pyarrow`。
+完整論文驗證仍需要受控的私有 split manifests、每折預測與 checkpoints、外部 cohort、縱向物理單位資料、圖表來源表，以及實測裝置功耗／延遲／峰值記憶體 logs。缺少這些產物時，程式通過 smoke test 不等同於重現論文中的數值結果。
 
----
-
-## 驗證流程
-
-本機測試：
-
-```powershell
-python -m unittest discover -s tests
-```
-
-冒煙管線（合成佇列 + `--fast` 預算）：
-
-```powershell
-python -m p_help_hcc.train --config configs/default.yaml `
-                           --data   data/synthetic_hcc.csv `
-                           --output outputs/smoke `
-                           --fast
-```
-
-每折會輸出 `metrics.json`、訓練好的 `model.joblib` 以及該折的切分清單。`metrics.csv` 與 `metrics_summary.json` 會彙總全部 25 次論文執行的結果。
-
----
-
-## 可重現性說明
-
-- 位元級可重現以主種子 `42` 為起點，傳遞到 NumPy、PyTorch（CPU/CUDA）、Python `random`、scikit-learn 與 XGBoost；確定性 CUDA 由 `torch.use_deterministic_algorithms(True)` 與 `CUBLAS_WORKSPACE_CONFIG=:4096:8` 啟用。
-- 25 次執行協定（5 種子 × 5 折）以平均值 ± 標準差呈現，並搭配 $1{,}000$ 次重抽的百分位自助信賴區間，與基於標準差的區間在每個指標上吻合至 $\pm 0.005$ 以內。
-- Phase P 控制器是平行執行迴路的**回顧式模擬**。前瞻性部署需要先進行未來的靜默影子執行，再啟用軟 / 硬門檻規則。
-
----
-
-## 引用方式
-
-若使用本程式碼或在此框架上延伸，請引用論文：
+## 引用
 
 ```bibtex
 @article{phelp_hcc,
-  title   = {An Explainable Internet-of-Medical-Things Framework with
-             Patient Digital Twins and Parallel Edge--Cloud Intelligence
-             for Hepatocellular Carcinoma Survival Prediction},
+  title   = {Parallel Explainable Internet of Medical Things Framework with
+             a Structured Multi-Agent Patient-State Representation for
+             Hepatocellular Carcinoma Survival Prediction},
   author  = {Wen-Dong Jiang and Tsung-Jung Lin and Chih-Yung Chang},
   journal = {IEEE Internet of Things Journal},
   year    = {2026},

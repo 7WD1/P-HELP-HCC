@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/p-hlpl-hcc/audit_manifest.schema.json",
+  "title": "P-HLPL-HCC controlled audit manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evidentiary_status",
+    "fold_runs",
+    "locked_external_validation",
+    "censoring_audit",
+    "figure_inputs",
+    "edge_profiling"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "evidentiary_status": {"const": "real_experiment_outputs"},
+    "fold_runs": {
+      "type": "array",
+      "minItems": 25,
+      "maxItems": 25,
+      "items": {
+        "type": "object",
+        "required": [
+          "seed", "fold", "metrics", "metrics_sha256", "predictions",
+          "predictions_sha256", "model", "model_sha256"
+        ],
+        "properties": {
+          "seed": {"type": "integer"},
+          "fold": {"type": "integer", "minimum": 0, "maximum": 4},
+          "metrics": {"type": "string"},
+          "metrics_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "predictions": {"type": "string"},
+          "predictions_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "model": {"type": "string"},
+          "model_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "locked_external_validation": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "censoring_audit": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "figure_inputs": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "edge_profiling": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}

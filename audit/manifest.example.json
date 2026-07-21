@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "evidentiary_status": "real_experiment_outputs",
+  "fold_runs": [],
+  "locked_external_validation": [],
+  "censoring_audit": [],
+  "figure_inputs": [],
+  "edge_profiling": []
+}

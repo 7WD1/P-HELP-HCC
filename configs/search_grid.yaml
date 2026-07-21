@@ -1,4 +1,4 @@
-description: Paper nested-search grid from the experimental section.
+description: Optional exploratory candidate grid; not invoked by training or reproduction workflows.
 random_forest:
   n_estimators: [100, 300, 500]
   max_depth: [6, 10, null]
