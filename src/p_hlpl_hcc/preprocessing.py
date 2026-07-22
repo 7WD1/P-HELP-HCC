@@ -4,6 +4,9 @@ The fitted imputer and scaler are part of the locked-model artifact.  Missingnes
 indicators are returned as an audit sidecar rather than appended to the model
 matrix; this preserves the frozen 67-column estimator interface while making
 cross-cohort missingness (notably AFP and Child--Pugh in SEER) explicit.
+
+Every named raw input below is available at or before the index HCC decision
+encounter.  Post-landmark fields are deliberately not used as fallbacks.
 """
 
 from __future__ import annotations
@@ -15,25 +18,7 @@ import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 
-from .constants import CANONICAL_COLUMNS, CURATED_DIM
-
-
-EXCLUDE_COLUMNS = {
-    "patient_id",
-    "mrn",
-    "medical_record_number",
-    "name",
-    "patient_name",
-    "dob",
-    "date_of_birth",
-    "national_id",
-    "phone",
-    "email",
-    "address",
-    CANONICAL_COLUMNS["time"],
-    CANONICAL_COLUMNS["event"],
-    CANONICAL_COLUMNS["label"],
-}
+from .constants import CURATED_DIM
 
 CURATED_FEATURE_NAMES = [
     "age",
@@ -91,7 +76,7 @@ CURATED_FEATURE_NAMES = [
     "radiotherapy",
     "chemotherapy",
     "palliative_care",
-    "surgical_margin_positive",
+    "planned_margin_risk",
     "transplant",
     "systemic_agents",
     "ecog",
@@ -102,7 +87,7 @@ CURATED_FEATURE_NAMES = [
     "size_gt5",
     "afp_gt400",
     "resection_eligible",
-    "aux_signal_01",
+    "baseline_auxiliary_risk_score",
 ]
 
 EXPLICIT_FEATURE_COLUMNS = [f"x_{i:02d}" for i in range(CURATED_DIM)]
@@ -139,20 +124,10 @@ def _stage(df: pd.DataFrame, col: str) -> pd.Series:
     return pd.Series(np.nan, index=df.index, dtype=float)
 
 
-def _first_extra_numeric(df: pd.DataFrame, used: set[str]) -> pd.Series:
-    for col in sorted(df.columns):
-        if col.lower() in EXCLUDE_COLUMNS or col in used:
-            continue
-        if pd.api.types.is_numeric_dtype(df[col]):
-            return pd.to_numeric(df[col], errors="coerce")
-    return pd.Series(0.0, index=df.index, dtype=float)
-
-
 def build_curated_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
     if all(col in df.columns for col in EXPLICIT_FEATURE_COLUMNS):
         return df[EXPLICIT_FEATURE_COLUMNS].apply(pd.to_numeric, errors="coerce")
 
-    used: set[str] = set()
     age = _numeric(df, "age", "age_years")
     sex_male = _binary(df, "sex_male", "male")
     year = _numeric(df, "year_of_diagnosis", "diagnosis_year")
@@ -234,7 +209,11 @@ def build_curated_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
         "radiotherapy": _binary(df, "radiotherapy"),
         "chemotherapy": _binary(df, "chemotherapy"),
         "palliative_care": _binary(df, "palliative_care"),
-        "surgical_margin_positive": _binary(df, "surgical_margin_positive"),
+        # A preoperative planning variable is admissible; the postoperative
+        # pathology result ``surgical_margin_positive`` is intentionally ignored.
+        "planned_margin_risk": _binary(
+            df, "planned_margin_risk", "anticipated_margin_risk"
+        ),
         "transplant": _binary(df, "transplant"),
         "systemic_agents": _binary(df, "systemic_agents"),
         "ecog": _numeric(df, "ecog", "ecog_status"),
@@ -249,7 +228,11 @@ def build_curated_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
         "resection_eligible": (
             ((ajcc <= 2) & (child == 0) & (tumor_size <= 5)).astype(float)
         ).where(ajcc.notna() & child.notna() & tumor_size.notna()),
-        "aux_signal_01": _first_extra_numeric(df, used),
+        # Keep the final auxiliary coordinate explicit.  Selecting an arbitrary
+        # numeric column could silently ingest a post-landmark measurement.
+        "baseline_auxiliary_risk_score": _numeric(
+            df, "baseline_auxiliary_risk_score"
+        ),
     }
     frame = pd.DataFrame({name: features[name] for name in CURATED_FEATURE_NAMES}, index=df.index)
     return frame.apply(pd.to_numeric, errors="coerce")

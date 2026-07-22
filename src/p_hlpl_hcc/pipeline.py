@@ -73,7 +73,7 @@ class PHlplHCCPipeline:
         phase_a = self.config.get("phase_a", {})
         state_enabled = bool(phase_a.get("state_representation_enabled", True))
         if state_enabled:
-            self.society = SocietyTransformer(process_noise_std=float(phase_a.get("process_noise_std", 0.05)))
+            self.society = SocietyTransformer()
             s_train = self.society.fit_transform(x_train)
             s_val = self.society.transform(x_val)
             self.state_agent_mask_ = self.agent_state_mask(phase_a)
@@ -244,7 +244,7 @@ class PHlplHCCPipeline:
                 "phase_p_validation_residual": self.phase_p_validation_residual_,
                 "candidate_selection_score": self.selection_score_,
                 "state_representation_enabled": state_enabled,
-                "phenotype_router_enabled": self.clusterer is not None,
+                "phenotype_calibration_feature_enabled": self.clusterer is not None,
                 "cox_explanation_anchor_enabled": self.cox is not None,
                 "cox_state_direction_connected_to_training": self.cox_state_anchor is not None,
                 "phase_e_training_scope": "mlp_branch_only",

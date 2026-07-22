@@ -113,7 +113,7 @@ class DiscreteTimeSurvivalPipeline:
         self.preprocessor = PHlplPreprocessor(curated_dim=int(data_cfg.get("curated_dim", 67)))
         x_train = self.preprocessor.fit_transform(train)
         x_val = self.preprocessor.transform(val)
-        self.society = SocietyTransformer(process_noise_std=0.0)
+        self.society = SocietyTransformer()
         state_train = self.society.fit_transform(x_train)
         state_val = self.society.transform(x_val)
         self.input_dim_ = int(state_train.shape[1])

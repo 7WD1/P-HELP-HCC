@@ -21,9 +21,11 @@ splits:
 
 phase_a:
   state_representation_enabled: true
-  tumor_update_enabled: true
-  fibrosis_update_enabled: true
-  dynamics_input_scale: physical_units_required
+  # Classifier inference is static. The separate dynamics variants override
+  # these switches only inside the physical-unit longitudinal back-test.
+  tumor_update_enabled: false
+  fibrosis_update_enabled: false
+  dynamics_input_scale: physical_units_backtest_only
   agent_blocks:
     patient: true
     tumor: true
@@ -32,7 +34,6 @@ phase_a:
     guideline: true
     explanation: true
   d_max_cm: 20.0
-  process_noise_std: 0.05
 
 phase_c:
   learners: [logistic, gradient_boosting_or_xgboost, random_forest, mlp]

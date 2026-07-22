@@ -3,11 +3,13 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from p_hlpl_hcc.data import generate_fixture_hcc_records, survival_months_to_class, validate_and_prepare_dataframe
+from p_hlpl_hcc.preprocessing import build_curated_feature_frame
 from p_hlpl_hcc.splits import build_repeated_splits
 from p_hlpl_hcc.survival import make_discrete_time_targets, risk_event_censor_counts
 
@@ -57,6 +59,32 @@ class DataAndSplitTests(unittest.TestCase):
         )
         self.assertEqual(counts[0]["risk_set"], 4)
         self.assertEqual(counts[0]["events"], 1)
+
+    def test_curated_schema_uses_only_explicit_pretreatment_auxiliaries(self):
+        source = pd.DataFrame(
+            {
+                "age": [60.0, 70.0],
+                "planned_margin_risk": [0, 1],
+                "baseline_auxiliary_risk_score": [0.2, 0.7],
+                "surgical_margin_positive": [0, 1],
+                "post_followup_marker": [2.0, 9.0],
+            }
+        )
+        changed_post_landmark = source.copy()
+        changed_post_landmark["surgical_margin_positive"] = [1, 0]
+        changed_post_landmark["post_followup_marker"] = [200.0, 900.0]
+
+        curated = build_curated_feature_frame(source)
+        changed = build_curated_feature_frame(changed_post_landmark)
+
+        self.assertIn("planned_margin_risk", curated.columns)
+        self.assertIn("baseline_auxiliary_risk_score", curated.columns)
+        self.assertNotIn("surgical_margin_positive", curated.columns)
+        np.testing.assert_allclose(curated.to_numpy(), changed.to_numpy(), equal_nan=True)
+        np.testing.assert_allclose(curated["planned_margin_risk"], [0.0, 1.0])
+        np.testing.assert_allclose(
+            curated["baseline_auxiliary_risk_score"], [0.2, 0.7]
+        )
 
 
 if __name__ == "__main__":

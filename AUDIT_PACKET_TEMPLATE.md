@@ -80,7 +80,7 @@ Each `*_predictions.csv` should contain one row per test patient per fold.
 | `p_c1` ... `p_c8` | yes | Predicted class probabilities |
 | `pred_class` | yes | Argmax predicted class |
 | `mortality_risk_score` | yes | Score used for C-index |
-| `phenotype` | recommended | Routed phenotype cluster |
+| `phenotype` | recommended | Assigned phenotype cluster used for reporting/fusion calibration only; no expert routing |
 | `scenario_arm` | recommended | Displayed scenario arm, if applicable |
 
 ## Metrics File Schema

@@ -1,6 +1,6 @@
 # P-HLPL-HCC
 
-**Parallel Hierarchical Explainable Learning Pipeline for Hepatocellular Carcinoma Survival Stratification**
+**Parallel Explainable Internet of Medical Things Framework with a Structured Multi-Agent Patient-State Representation for Hepatocellular Carcinoma Survival Prediction**
 
 Reference implementation accompanying the manuscript. The release contains executable analysis paths and non-evidentiary smoke tests; it does not redistribute the private 673-patient cohort or claim that absent paper-run artifacts have been reproduced.
 
@@ -11,7 +11,7 @@ Reference implementation accompanying the manuscript. The release contains execu
 
 **English** | [Traditional Chinese](README.zh-TW.md)
 
-**Authors.** Wen-Dong Jiang (Tamkang University, `wendongjiang@ieee.org`); Tsung-Jung Lin (Tamkang University and Taipei City Hospital, Ren-Ai Branch, `dab70@tpech.gov.tw`); Chih-Yung Chang (Tamkang University, `cychang@mail.tku.edu.tw`).
+**Authors.** Wen-Dong Jiang (Ningbo University, `wendongjiang@ieee.org`); Tsung-Jung Lin (Tamkang University and Taipei City Hospital, Ren-Ai Branch, `dab70@tpech.gov.tw`); Chih-Yung Chang (Tamkang University, `cychang@mail.tku.edu.tw`); Diptendu Sinha Roy (National Institute of Technology, Shillong, `diptendu.sr@nitm.ac.in`).
 
 **Manuscript submitted to the IEEE Internet of Things Journal (IEEE IoTJ).**
 
@@ -69,7 +69,7 @@ The K-means phenotype branch operates on the **67-dim curated input**. The survi
 - **Splits.** Repeated patient-level 5-fold cross-validation under five seeds `{42, 123, 2024, 31415, 65537}`, stratified jointly on the eight-class label and event indicator (with deterministic fallbacks when a joint stratum is too small).
 - **Phase A.** Static structured projection into the `d_S=46` six-block patient state. Equations expressed in centimeters and months are never applied to this standardized state. Gompertz/fibrosis updates are confined to the separate physical-unit longitudinal back-test and require source-scale inputs; no separate AFP transition is implemented in the released back-test.
 - **Phase C - survival ensemble.** Four heterogeneous base learners merged by Brier-optimal fusion: regularized multinomial logistic, XGBoost (Gradient Boosting fallback), calibrated random forest, and PyTorch MLP with class-weighted focal loss.
-- **Phase C - phenotype branch.** PCA conserving 90% variance plus K-means with `K=4` on the curated input, returning silhouette, Davies-Bouldin, and Calinski-Harabasz internal validity indices.
+- **Phase C - phenotype branch.** PCA conserving 90% variance plus K-means with `K=4` on the curated input, returning silhouette, Davies-Bouldin, and Calinski-Harabasz internal validity indices. The resulting one-hot cluster indicator enters fusion calibration only; it never routes or gates separate experts.
 - **Phase C - scenario head and observational analyses.** The MLP uses a shared-backbone six-action auxiliary head during training (`scenario_auxiliary.loss_weight=0.20`). The separate single-patient survival sweep uses pretreatment Patient/Tumor/Liver state for its propensity gate, neutralizes factual-treatment-derived auxiliary coordinates for every arm, consumes exactly `B=200` externally generated finite patient-bootstrap prediction draws plus guideline confidences, applies `rho*=0.30`, and otherwise returns an empty clinical display. The cohort-level CLI reports naive, IPTW, and cross-fitted AIPW/DR contrasts; overlap retention; standardized mean differences; E-values; and IPTW-Kaplan--Meier RMST contrasts. Cohort summaries use `B=1000` patient resamples; the RMST bootstrap refits the propensity model on every draw, while the AIPW score bootstrap explicitly keeps cross-fitted nuisance predictions fixed. All outputs are observational sensitivity summaries, not causal effects or recommendations.
 - **Phase E.** A state-aligned Cox elastic-net direction is fitted before the neural ensemble. `L_cal` (one Phase-P sample weight per patient times multiclass Brier), `L_exp` (differentiable state-risk input-gradient versus normalized Cox-direction alignment), and `L_clin` (selected-state gradient-sign hinge) are added only to the MLP objective and back-propagated with configurable weights `0.4/0.3/0.2`; named switches set each contribution to zero. Tree and logistic branches retain their native objectives. Post-hoc permutation attribution and externally supplied attribution-alignment diagnostics remain separate; the repository does not implement SHAP-in-the-loop.
 - **Phase P.** Three executable paths are connected: validation-replay residuals modulate censoring-informed training weights, the same residual enters MLP validation-stream checkpoint selection, and a one-vs-rest Platt calibrator is called by `predict_proba`. No nested hyperparameter search is invoked by the released training or reproduction commands. The replay residual is `1-P(true)+alpha_e*sum_c(P_c-onehot_c)^2`. The retrospective monitor retains thresholds `e_soft=0.18` and `e_hard=0.32`, abstention entropies `p_soft=0.65` and `p_hard=0.85`, online step `eta_w=5e-3`, proximal anchor `lambda_w=1e-2`, monitor window `n_b=30`, retrain buffer `n_r=200`, and `alpha_e=0.5`. These thresholds raise review flags only in retrospective replay; they are not validated live-control rules.
@@ -139,7 +139,7 @@ P-HLPL-HCC/
 |   `-- run_smoke.ps1      # One-shot smoke runner
 |-- src/p_hlpl_hcc/
 |   |-- society.py         # Phase A: deterministic six-block state projection
-|   |-- clustering.py      # Phase C: PCA + K-means phenotype routing
+|   |-- clustering.py      # Phase C: PCA + K-means calibration feature
 |   |-- ensemble.py        # Phase C: 4-learner Brier-optimal stacking
 |   |-- neural.py          # Phase C: MLP with focal loss
 |   |-- counterfactual.py  # Suppressed single-patient observational sweep
@@ -199,7 +199,7 @@ The released `configs/default.yaml` encodes the current paper selections. The mo
 
 | Column | Type | Description |
 |---|---|---|
-| `overall_survival_months` | float | Observed overall survival in months from diagnosis |
+| `overall_survival_months` | float | Observed follow-up in months from the index HCC decision encounter |
 | `event` | int (0/1) | `1` for death/event, `0` for censored |
 
 **Optional columns (auto-derived if absent)**
@@ -209,9 +209,9 @@ The released `configs/default.yaml` encodes the current paper selections. The mo
 | `survival_class` | `0..7` or `C1..C8` |
 | `surgical_strategy` | `none` / `ablation` / `resection` |
 | `dominant_aetiology` | `HBV` / `HCV` / `NBNC` |
-| Clinical covariates | `age`, `sex_male`, `tumor_size_cm`, `afp`, `albumin`, `bilirubin`, `inr`, `ajcc_stage`, treatment flags, and related structured clinical fields |
+| Clinical covariates | `age`, `sex_male`, `tumor_size_cm`, `afp`, `albumin`, `bilirubin`, `inr`, `ajcc_stage`, index-encounter treatment-plan flags, `planned_margin_risk`, `baseline_auxiliary_risk_score`, and related structured baseline fields |
 
-The preprocessing pipeline maps available clinical columns into a stable canonical 67-feature schema (`x_00` to `x_66`). When those `x_*` columns are already present they are treated as a curated feature matrix. Free-text or identifier columns are never serialized into the model artifacts.
+The prediction landmark is the index HCC decision encounter. Every predictor, including treatment-plan fields, must be recorded at or before that landmark; post-landmark follow-up, outcome-derived fields, and postoperative pathology such as `surgical_margin_positive` are excluded. `planned_margin_risk` denotes a preoperative assessment, not an observed surgical result. The preprocessing pipeline maps named clinical columns into a stable canonical 67-feature schema (`x_00` to `x_66`) without selecting arbitrary numeric fallback columns. When those `x_*` columns are already present they are treated as a curated feature matrix, so the caller must enforce the same landmark contract before invocation. Free-text or identifier columns are never serialized into the model artifacts.
 
 **Data hygiene.** Do not place PHI under `data/` for release. Common tabular formats and `data/raw/` / `data/private/` are ignored by Git out of the box. Saved `joblib` or pickle model artifacts can execute arbitrary code when loaded; only load models produced locally or from a trusted release.
 
@@ -290,7 +290,7 @@ If you use this code or build upon the framework, please cite the paper:
   title   = {Parallel Explainable Internet of Medical Things Framework with
              a Structured Multi-Agent Patient-State Representation for
              Hepatocellular Carcinoma Survival Prediction},
-  author  = {Wen-Dong Jiang and Tsung-Jung Lin and Chih-Yung Chang},
+  author  = {Wen-Dong Jiang and Tsung-Jung Lin and Chih-Yung Chang and Diptendu Sinha Roy},
   journal = {IEEE Internet of Things Journal},
   year    = {2026},
   note    = {Submitted}

@@ -8,8 +8,6 @@ available only through ``scripts/run_dynamics_backtest.py``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 
@@ -28,30 +26,20 @@ def _resize_block(block: np.ndarray, width: int) -> np.ndarray:
     return np.tile(block, (1, reps))[:, :width]
 
 
-@dataclass
 class SocietyTransformer:
     """Map 67 curated features into a standardized 46-dimensional state."""
 
-    process_noise_std: float = 0.05
-    scaler: StandardScaler | None = None
+    def __init__(self) -> None:
+        self.scaler: StandardScaler | None = None
 
     def fit(self, x: np.ndarray) -> "SocietyTransformer":
         self.scaler = StandardScaler().fit(self._project(x))
         return self
 
-    def transform(
-        self,
-        x: np.ndarray,
-        *,
-        add_noise: bool = False,
-        seed: int | None = None,
-    ) -> np.ndarray:
+    def transform(self, x: np.ndarray) -> np.ndarray:
         if self.scaler is None:
             raise RuntimeError("SocietyTransformer is not fitted")
         state = self.scaler.transform(self._project(x))
-        if add_noise:
-            rng = np.random.default_rng(seed)
-            state = state + rng.normal(0.0, self.process_noise_std, size=state.shape)
         return state.astype(np.float32)
 
     def fit_transform(self, x: np.ndarray) -> np.ndarray:

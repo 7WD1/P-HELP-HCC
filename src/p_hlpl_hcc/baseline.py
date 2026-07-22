@@ -70,7 +70,7 @@ class CoxPHSurvivalPipeline:
             "named_ablation": "A1",
             "pipeline": "coxph_breslow_only",
             "uses_deep_encoder": False,
-            "uses_phenotype_router": False,
+            "uses_phenotype_calibration_feature": False,
             "uses_scenario_head": False,
             "uses_phase_p": False,
         }

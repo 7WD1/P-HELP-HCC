@@ -33,6 +33,9 @@ class Reviewer23WiringTests(unittest.TestCase):
 
     def test_named_a5_a6_configs_disable_the_claimed_components(self):
         base = load_config(ROOT / "configs" / "default.yaml")
+        self.assertFalse(base["phase_a"]["tumor_update_enabled"])
+        self.assertFalse(base["phase_a"]["fibrosis_update_enabled"])
+        self.assertNotIn("process_noise_std", base["phase_a"])
         dp = base["safeguards"]["federated"]["dp_sgd"]
         self.assertEqual(dp["epsilon_per_round"], 0.4)
         self.assertEqual(dp["epsilon_total_design_budget"], 4.0)

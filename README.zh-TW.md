@@ -78,7 +78,7 @@ python scripts/run_dynamics_backtest.py --data <longitudinal.csv> `
   title   = {Parallel Explainable Internet of Medical Things Framework with
              a Structured Multi-Agent Patient-State Representation for
              Hepatocellular Carcinoma Survival Prediction},
-  author  = {Wen-Dong Jiang and Tsung-Jung Lin and Chih-Yung Chang},
+  author  = {Wen-Dong Jiang and Tsung-Jung Lin and Chih-Yung Chang and Diptendu Sinha Roy},
   journal = {IEEE Internet of Things Journal},
   year    = {2026},
   note    = {Submitted}
