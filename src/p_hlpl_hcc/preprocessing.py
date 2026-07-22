@@ -87,7 +87,7 @@ CURATED_FEATURE_NAMES = [
     "size_gt5",
     "afp_gt400",
     "resection_eligible",
-    "baseline_auxiliary_risk_score",
+    "comorbidity_count_ge2",
 ]
 
 EXPLICIT_FEATURE_COLUMNS = [f"x_{i:02d}" for i in range(CURATED_DIM)]
@@ -138,6 +138,7 @@ def build_curated_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
         nbnc = ((hbv.fillna(0) == 0) & (hcv.fillna(0) == 0)).astype(float)
     cirrhosis = _binary(df, "cirrhosis")
     diabetes = _binary(df, "diabetes")
+    comorbidity_count = _numeric(df, "comorbidity_count", default=np.nan)
     tumor_size = _numeric(df, "tumor_size_cm", "tumor_size")
     lesion_count = _numeric(df, "lesion_count", "tumor_count", default=1.0)
     ajcc = _stage(df, "ajcc_stage")
@@ -161,7 +162,7 @@ def build_curated_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
         "race_asian": _contains(df, "race", "asian"),
         "race_other": _contains(df, "race", "other|black|white|unknown"),
         "diabetes": diabetes,
-        "comorbidity_count": _numeric(df, "comorbidity_count", default=np.nan),
+        "comorbidity_count": comorbidity_count,
         "hbv_positive": hbv,
         "hcv_positive": hcv,
         "nbnc": nbnc,
@@ -228,10 +229,10 @@ def build_curated_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
         "resection_eligible": (
             ((ajcc <= 2) & (child == 0) & (tumor_size <= 5)).astype(float)
         ).where(ajcc.notna() & child.notna() & tumor_size.notna()),
-        # Keep the final auxiliary coordinate explicit.  Selecting an arbitrary
-        # numeric column could silently ingest a post-landmark measurement.
-        "baseline_auxiliary_risk_score": _numeric(
-            df, "baseline_auxiliary_risk_score"
+        # The final auxiliary coordinate is an explicit baseline threshold,
+        # never an arbitrary numeric fallback.
+        "comorbidity_count_ge2": (comorbidity_count >= 2).astype(float).where(
+            comorbidity_count.notna()
         ),
     }
     frame = pd.DataFrame({name: features[name] for name in CURATED_FEATURE_NAMES}, index=df.index)

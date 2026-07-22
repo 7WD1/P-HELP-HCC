@@ -64,8 +64,8 @@ class DataAndSplitTests(unittest.TestCase):
         source = pd.DataFrame(
             {
                 "age": [60.0, 70.0],
+                "comorbidity_count": [1.0, 3.0],
                 "planned_margin_risk": [0, 1],
-                "baseline_auxiliary_risk_score": [0.2, 0.7],
                 "surgical_margin_positive": [0, 1],
                 "post_followup_marker": [2.0, 9.0],
             }
@@ -78,13 +78,11 @@ class DataAndSplitTests(unittest.TestCase):
         changed = build_curated_feature_frame(changed_post_landmark)
 
         self.assertIn("planned_margin_risk", curated.columns)
-        self.assertIn("baseline_auxiliary_risk_score", curated.columns)
+        self.assertIn("comorbidity_count_ge2", curated.columns)
         self.assertNotIn("surgical_margin_positive", curated.columns)
         np.testing.assert_allclose(curated.to_numpy(), changed.to_numpy(), equal_nan=True)
         np.testing.assert_allclose(curated["planned_margin_risk"], [0.0, 1.0])
-        np.testing.assert_allclose(
-            curated["baseline_auxiliary_risk_score"], [0.2, 0.7]
-        )
+        np.testing.assert_allclose(curated["comorbidity_count_ge2"], [0.0, 1.0])
 
 
 if __name__ == "__main__":

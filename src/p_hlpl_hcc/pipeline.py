@@ -96,8 +96,29 @@ class PHlplHCCPipeline:
             self.clusterer = None
             self.cluster_feature_count_ = 1
             cluster_val = np.ones((len(x_val), 1), dtype=float)
-        train_actions = extract_observed_actions_from_df(train_df)
-        val_actions = extract_observed_actions_from_df(val_df)
+        phase_c_cfg = self.config.get("phase_c", {})
+        scenario_aux_enabled = bool(
+            phase_c_cfg.get("scenario_auxiliary", {}).get("enabled", True)
+        )
+        cf_cfg = phase_c_cfg.get("counterfactual", {})
+        counterfactual_enabled = bool(
+            cf_cfg.get("enabled", True) and self.society is not None
+        )
+        action_col = str(
+            self.config.get("data", {}).get(
+                "index_treatment_action_col", "index_treatment_action"
+            )
+        )
+        train_actions = (
+            extract_observed_actions_from_df(train_df, action_col=action_col)
+            if scenario_aux_enabled or counterfactual_enabled
+            else None
+        )
+        val_actions = (
+            extract_observed_actions_from_df(val_df, action_col=action_col)
+            if scenario_aux_enabled or counterfactual_enabled
+            else None
+        )
         train_times = train_df[self.config["data"]["target_time_col"]].to_numpy(dtype=float)
         train_events = train_df[self.config["data"]["event_col"]].to_numpy(dtype=int)
         val_times = val_df[self.config["data"]["target_time_col"]].to_numpy(dtype=float)
@@ -152,8 +173,9 @@ class PHlplHCCPipeline:
             )
         else:
             self.cox = None
-        cf_cfg = self.config.get("phase_c", {}).get("counterfactual", {})
-        if bool(cf_cfg.get("enabled", True)) and self.society is not None:
+        if counterfactual_enabled:
+            if train_actions is None:
+                raise RuntimeError("Counterfactual fitting requires recorded actions")
             self.counterfactual = CounterfactualSweep(
                 actions=list(cf_cfg.get("actions", [])) or None,
                 propensity_gate=tuple(cf_cfg.get("propensity_gate", [0.05, 0.95])),
@@ -336,9 +358,14 @@ class PHlplHCCPipeline:
     ) -> list[dict[str, object]]:
         if self.counterfactual is None:
             raise RuntimeError("Pipeline is not fitted")
+        action_col = str(
+            self.config.get("data", {}).get(
+                "index_treatment_action_col", "index_treatment_action"
+            )
+        )
         observed_action = int(
             extract_observed_actions_from_df(
-                df.iloc[[row]], require_explicit=True
+                df.iloc[[row]], action_col=action_col
             )[0]
         )
         x, state = self.transform_state(df)

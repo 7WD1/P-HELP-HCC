@@ -51,20 +51,8 @@ class CoxPHSurvivalPipeline:
             l1=float(cox_cfg.get("l1", 1e-3)),
             l2=float(cox_cfg.get("l2", 1e-3)),
         ).fit(x, train[time_col].to_numpy(float), train[event_col].to_numpy(int))
-        log_risk = self.cox.predict_log_hazard(x)
-        time = train[time_col].to_numpy(float)
-        event = train[event_col].to_numpy(int)
-        event_times = np.sort(np.unique(time[event == 1]))
-        increments: list[tuple[float, float]] = []
-        exp_risk = np.exp(np.clip(log_risk, -30, 30))
-        for event_time in event_times:
-            deaths = int(np.sum((time == event_time) & (event == 1)))
-            denominator = float(exp_risk[time >= event_time].sum())
-            if denominator > 0:
-                increments.append((float(event_time), deaths / denominator))
-        self.baseline_cumulative_hazard_ = np.array(
-            [sum(value for event_time, value in increments if event_time <= cut) for cut in self.cutpoints_],
-            dtype=float,
+        self.baseline_cumulative_hazard_ = self.cox.baseline_cumulative_hazard_at(
+            self.cutpoints_
         )
         self.mechanism_trace_ = {
             "named_ablation": "A1",
@@ -81,8 +69,14 @@ class CoxPHSurvivalPipeline:
             raise RuntimeError("CoxPHSurvivalPipeline is not fitted")
         prepared = self._prepare(df)
         x = self.preprocessor.transform(prepared)
-        relative_risk = np.exp(np.clip(self.cox.predict_log_hazard(x), -30, 30))
-        survival = np.exp(-relative_risk[:, None] * self.baseline_cumulative_hazard_[None, :])
+        log_risk = self.cox.predict_log_hazard(x).astype(np.float64)
+        baseline = self.baseline_cumulative_hazard_.astype(np.float64)
+        log_baseline = np.full(baseline.shape, -np.inf, dtype=np.float64)
+        positive = baseline > 0
+        log_baseline[positive] = np.log(baseline[positive])
+        with np.errstate(over="ignore", under="ignore"):
+            cumulative_hazard = np.exp(log_risk[:, None] + log_baseline[None, :])
+        survival = np.exp(-cumulative_hazard)
         probabilities = np.column_stack(
             [1.0 - survival[:, 0], *[survival[:, idx - 1] - survival[:, idx] for idx in range(1, len(self.cutpoints_))], survival[:, -1]]
         )

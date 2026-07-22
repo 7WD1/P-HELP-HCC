@@ -48,7 +48,7 @@ class Reviewer23WiringTests(unittest.TestCase):
         self.assertTrue(full["phase_c"]["scenario_auxiliary"]["enabled"])
         self.assertTrue(full["phase_p"]["enabled"])
         self.assertFalse(a5["phase_c"]["scenario_auxiliary"]["enabled"])
-        self.assertFalse(a5["phase_c"]["counterfactual"]["enabled"])
+        self.assertTrue(a5["phase_c"]["counterfactual"]["enabled"])
         self.assertTrue(a5["phase_p"]["enabled"])
         self.assertTrue(a6["phase_c"]["scenario_auxiliary"]["enabled"])
         self.assertFalse(a6["phase_p"]["enabled"])
@@ -67,6 +67,8 @@ class Reviewer23WiringTests(unittest.TestCase):
         ]
         resolved = {name: apply_named_ablation(base, manifest, name) for name in names}
         self.assertEqual(resolved["A1"]["experiment"]["pipeline"], "coxph_baseline")
+        self.assertEqual(resolved["A1"]["phase_e"]["cox"]["l1"], 0.0)
+        self.assertEqual(resolved["A1"]["phase_e"]["cox"]["l2"], 0.0)
         self.assertEqual(len(resolved["A2"]["phase_c"]["learners"]), 3)
         self.assertFalse(resolved["A3"]["phase_c"]["clustering"]["enabled"])
         self.assertTrue(resolved["A4"]["phase_c"]["clustering"]["enabled"])

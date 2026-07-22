@@ -191,6 +191,53 @@ def generate_fixture_hcc_records(n: int = 673, seed: int = 42) -> pd.DataFrame:
             "event": event,
             "survival_class": y,
         }
+        # Fixture-only canonical factual arm. It resolves multimodal legacy
+        # flags to one recorded index action for scenario-head software tests.
+        if row["treatment_combo"]:
+            canonical_action = "Combo"
+        elif row["treatment_sorafenib"]:
+            canonical_action = "Sorafenib"
+        elif row["treatment_tace"]:
+            canonical_action = "TACE"
+        elif row["treatment_ablation"] or row["treatment_rfa"]:
+            canonical_action = "RFA"
+        elif row["treatment_resection"]:
+            canonical_action = "Resection"
+        else:
+            canonical_action = "None"
+        row["index_treatment_action"] = canonical_action
+        # Keep fixture-only legacy covariates internally consistent with the
+        # single canonical index action so contradiction checks are exercised.
+        row["surgical_strategy"] = (
+            trt
+            if canonical_action == "Combo"
+            else {
+                "None": "none",
+                "Resection": "resection",
+                "TACE": "none",
+                "RFA": "ablation",
+                "Sorafenib": "none",
+            }[canonical_action]
+        )
+        for field in (
+            "treatment_no_resection",
+            "treatment_ablation",
+            "treatment_resection",
+            "treatment_tace",
+            "treatment_rfa",
+            "treatment_sorafenib",
+            "treatment_combo",
+        ):
+            row[field] = 0
+        action_flag = {
+            "None": "treatment_no_resection",
+            "Resection": "treatment_resection",
+            "TACE": "treatment_tace",
+            "RFA": "treatment_rfa",
+            "Sorafenib": "treatment_sorafenib",
+            "Combo": "treatment_combo",
+        }
+        row[action_flag[canonical_action]] = 1
         # Fill additional raw-like covariates so preprocessing exercises selection.
         for j in range(1, 44):
             signal = 0.05 * stage_idx - 0.02 * y + 0.01 * (age - 60)

@@ -28,6 +28,11 @@ variants:
         enabled: false
       counterfactual:
         enabled: false
+    phase_e:
+      cox:
+        enabled: true
+        l1: 0.0
+        l2: 0.0
     phase_p:
       enabled: false
       ipcw_sample_reweighting_enabled: false
@@ -111,7 +116,7 @@ variants:
       scenario_auxiliary:
         enabled: false
       counterfactual:
-        enabled: false
+        enabled: true
     phase_p:
       enabled: true
       ipcw_sample_reweighting_enabled: true

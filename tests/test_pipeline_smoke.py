@@ -3,17 +3,107 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from p_hlpl_hcc.config import apply_fast_overrides, load_config
+from p_hlpl_hcc.counterfactual import extract_observed_actions_from_df
 from p_hlpl_hcc.data import generate_fixture_hcc_records, validate_and_prepare_dataframe
 from p_hlpl_hcc.pipeline import PHlplHCCPipeline
 from p_hlpl_hcc.society import SocietyTransformer
 
 
 class PipelineSmokeTests(unittest.TestCase):
+    def test_action_extraction_never_falls_back_to_legacy_fields(self):
+        legacy_only_frames = [
+            pd.DataFrame({"surgical_strategy": ["resection"]}),
+            pd.DataFrame({"treatment_tace": [1]}),
+            pd.DataFrame({"recorded_pretreatment_action": ["RFA"]}),
+        ]
+        for frame in legacy_only_frames:
+            with self.subTest(columns=list(frame.columns)):
+                with self.assertRaisesRegex(ValueError, "configured recorded pretreatment"):
+                    extract_observed_actions_from_df(frame)
+
+    def test_action_extraction_rejects_canonical_legacy_conflict(self):
+        frame = pd.DataFrame(
+            {
+                "index_treatment_action": ["Resection"],
+                "treatment_resection": [0],
+                "treatment_tace": [1],
+            }
+        )
+        with self.assertRaisesRegex(ValueError, "conflicts with retained legacy"):
+            extract_observed_actions_from_df(frame)
+
+        rfa_conflict = pd.DataFrame(
+            {
+                "index_treatment_action": ["RFA"],
+                "surgical_strategy": ["none"],
+            }
+        )
+        with self.assertRaisesRegex(ValueError, "conflicts with retained legacy"):
+            extract_observed_actions_from_df(rfa_conflict)
+
+    def test_action_extraction_uses_configured_canonical_column(self):
+        frame = pd.DataFrame({"factual_arm": ["None", "Combo"]})
+        np.testing.assert_array_equal(
+            extract_observed_actions_from_df(frame, action_col="factual_arm"),
+            [0, 5],
+        )
+
+    def test_configured_action_column_audits_default_column_conflicts(self):
+        custom = pd.DataFrame(
+            {
+                "factual_arm": ["Resection"],
+                "index_treatment_action": ["TACE"],
+            }
+        )
+        with self.assertRaisesRegex(ValueError, "conflicts with retained legacy"):
+            extract_observed_actions_from_df(custom, action_col="factual_arm")
+
+        alternate = pd.DataFrame(
+            {
+                "recorded_pretreatment_action": ["Resection"],
+                "index_treatment_action": ["TACE"],
+            }
+        )
+        with self.assertRaisesRegex(ValueError, "conflicts with retained legacy"):
+            extract_observed_actions_from_df(
+                alternate, action_col="recorded_pretreatment_action"
+            )
+
+    def test_fit_rejects_missing_observed_action_for_enabled_auxiliary_path(self):
+        config = apply_fast_overrides(load_config(ROOT / "configs" / "default.yaml"))
+        df = validate_and_prepare_dataframe(generate_fixture_hcc_records(n=32, seed=19))
+        action_columns = [
+            "index_treatment_action",
+            "surgical_strategy",
+            "treatment_no_resection",
+            "treatment_ablation",
+            "treatment_resection",
+            "treatment_tace",
+            "treatment_rfa",
+            "treatment_sorafenib",
+            "treatment_combo",
+        ]
+        train = df.iloc[:24].drop(columns=action_columns, errors="ignore")
+        val = df.iloc[24:].drop(columns=action_columns, errors="ignore")
+        with self.assertRaisesRegex(ValueError, "recorded pretreatment action"):
+            PHlplHCCPipeline(config=config, seed=42).fit(train, val)
+
+    def test_sweep_only_fit_validates_validation_actions(self):
+        config = apply_fast_overrides(load_config(ROOT / "configs" / "default.yaml"))
+        config["phase_c"]["scenario_auxiliary"]["enabled"] = False
+        config["phase_c"]["counterfactual"]["enabled"] = True
+        df = validate_and_prepare_dataframe(generate_fixture_hcc_records(n=32, seed=23))
+        train = df.iloc[:24]
+        val = df.iloc[24:].drop(columns=["index_treatment_action"])
+        with self.assertRaisesRegex(ValueError, "recorded pretreatment action"):
+            PHlplHCCPipeline(config=config, seed=42).fit(train, val)
+
     def test_pipeline_fit_predict_counterfactual(self):
         config = apply_fast_overrides(load_config(ROOT / "configs" / "default.yaml"))
         df = validate_and_prepare_dataframe(generate_fixture_hcc_records(n=72, seed=11))
@@ -92,6 +182,7 @@ class PipelineSmokeTests(unittest.TestCase):
         missing_action = test.head(1).drop(
             columns=[
                 "surgical_strategy",
+                "index_treatment_action",
                 "treatment_no_resection",
                 "treatment_ablation",
                 "treatment_resection",
@@ -105,6 +196,7 @@ class PipelineSmokeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "recorded pretreatment action"):
             model.counterfactual_report(missing_action, row=0)
         unknown_action = test.head(1).copy()
+        unknown_action["index_treatment_action"] = "unknown"
         unknown_action["surgical_strategy"] = "unknown"
         for column in [
             "treatment_no_resection",

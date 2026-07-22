@@ -217,65 +217,108 @@ class CounterfactualSweep:
 
 
 def extract_observed_actions_from_df(
-    df, *, require_explicit: bool = False
+    df, *, action_col: str = "index_treatment_action"
 ) -> np.ndarray:
-    """Map recorded pretreatment fields to the paper's six action indices.
+    """Map the configured canonical pretreatment action to six action indices.
 
-    When ``require_explicit`` is true, every row must contain a recognized
-    recorded action.  This is required for a patient-level factual contrast;
-    the factual arm is never reconstructed from state-template proximity.
+    The canonical column is the sole source of the factual arm. Legacy action
+    fields, when retained as model covariates, are checked only for explicit
+    contradictions; they are never used as a fallback or converted to action
+    zero when the canonical value is absent.
     """
 
     import pandas as pd
 
     if not isinstance(df, pd.DataFrame):
         raise TypeError("df must be a pandas DataFrame")
-    n = len(df)
-    actions = np.zeros(n, dtype=int)
-    recognized = np.zeros(n, dtype=bool)
-    if "surgical_strategy" in df.columns:
-        strategy = df["surgical_strategy"].astype(str).str.lower()
-        no_mask = strategy.str.contains(
-            r"^(?:none|no(?:\s+resection|\s+surgery)?|best\s+supportive\s+care|bsc|palliative)$",
-            regex=True,
-            na=False,
-        )
-        actions[no_mask.to_numpy()] = 0
-        recognized |= no_mask.to_numpy()
-        resection_mask = strategy.str.contains("resection", na=False) & ~no_mask
-        actions[resection_mask.to_numpy()] = 1
-        recognized |= resection_mask.to_numpy()
-        tace_mask = strategy.str.contains("tace|chemoembol", na=False)
-        actions[tace_mask.to_numpy()] = 2
-        recognized |= tace_mask.to_numpy()
-        ablation_mask = strategy.str.contains("ablation|rfa", na=False)
-        actions[ablation_mask.to_numpy()] = 3
-        recognized |= ablation_mask.to_numpy()
-        systemic_mask = strategy.str.contains("sorafenib|systemic", na=False)
-        actions[systemic_mask.to_numpy()] = 4
-        recognized |= systemic_mask.to_numpy()
-        combo_mask = strategy.str.contains("combo|combination", na=False)
-        actions[combo_mask.to_numpy()] = 5
-        recognized |= combo_mask.to_numpy()
-    flag_order = [
-        ("treatment_no_resection", 0),
-        ("treatment_resection", 1),
-        ("treatment_tace", 2),
-        ("treatment_ablation", 3),
-        ("treatment_rfa", 3),
-        ("treatment_sorafenib", 4),
-        ("treatment_combo", 5),
-    ]
-    for col, idx in flag_order:
-        if col in df.columns:
-            mask = pd.to_numeric(df[col], errors="coerce").fillna(0).to_numpy() > 0
-            actions[mask] = idx
-            recognized |= mask
-    if require_explicit and not np.all(recognized):
-        missing_rows = np.flatnonzero(~recognized)
-        preview = missing_rows[:5].tolist()
+    if action_col not in df.columns:
         raise ValueError(
-            "A recorded pretreatment action is required for every requested "
-            f"factual contrast; unrecognized rows include {preview}"
+            f"The configured recorded pretreatment action column {action_col!r} is required"
         )
-    return actions.astype(int)
+
+    allowed = {
+        "none": 0,
+        "resection": 1,
+        "tace": 2,
+        "rfa": 3,
+        "sorafenib": 4,
+        "combo": 5,
+    }
+    raw = df[action_col]
+    normalized = raw.astype("string").str.strip().str.lower()
+    recognized = normalized.isin(allowed)
+    if not bool(recognized.all()):
+        invalid_rows = np.flatnonzero(~recognized.to_numpy())[:5].tolist()
+        raise ValueError(
+            "Exactly one recognized recorded pretreatment action is required in the "
+            f"configured canonical column; invalid rows include {invalid_rows}"
+        )
+    actions = normalized.map(allowed).to_numpy(dtype=int)
+
+    conflicts = np.zeros(len(df), dtype=bool)
+    full_action_columns = [
+        name
+        for name in ("index_treatment_action", "recorded_pretreatment_action")
+        if name in df.columns and name != action_col
+    ]
+    for name in full_action_columns:
+        legacy = df[name].astype("string").str.strip().str.lower()
+        populated = legacy.notna() & ~legacy.isin(
+            ["", "unknown", "nan", "na", "n/a", "not recorded"]
+        )
+        valid = legacy.isin(allowed)
+        legacy_index = legacy.map(allowed).fillna(-1).to_numpy(dtype=int)
+        conflicts |= populated.to_numpy() & (
+            (~valid).to_numpy() | (legacy_index != actions)
+        )
+
+    if "surgical_strategy" in df.columns and action_col != "surgical_strategy":
+        strategy = df["surgical_strategy"].astype("string").str.strip().str.lower()
+        compatibility = {
+            "none": {0, 2, 4, 5},
+            "no resection": {0, 2, 4, 5},
+            "ablation": {3, 5},
+            "rfa": {3, 5},
+            "resection": {1, 5},
+            "tace": {2, 5},
+            "sorafenib": {4, 5},
+            "combo": {5},
+            "combination": {5},
+        }
+        for row, value in enumerate(strategy.tolist()):
+            if pd.isna(value) or value in {
+                "",
+                "unknown",
+                "nan",
+                "na",
+                "n/a",
+                "not recorded",
+            }:
+                continue
+            permitted = compatibility.get(str(value))
+            if permitted is None or int(actions[row]) not in permitted:
+                conflicts[row] = True
+
+    flag_compatibility = {
+        "treatment_no_resection": {0, 2, 3, 4, 5},
+        "treatment_resection": {1, 5},
+        "treatment_tace": {2, 5},
+        "treatment_ablation": {3, 5},
+        "treatment_rfa": {3, 5},
+        "treatment_sorafenib": {4, 5},
+        "treatment_combo": {5},
+    }
+    for name, permitted in flag_compatibility.items():
+        if name not in df.columns:
+            continue
+        active = pd.to_numeric(df[name], errors="coerce").fillna(0).to_numpy() > 0
+        compatible = np.isin(actions, list(permitted))
+        conflicts |= active & ~compatible
+
+    if np.any(conflicts):
+        conflict_rows = np.flatnonzero(conflicts)[:5].tolist()
+        raise ValueError(
+            "Recorded pretreatment action conflicts with retained legacy action fields; "
+            f"conflicting rows include {conflict_rows}"
+        )
+    return actions

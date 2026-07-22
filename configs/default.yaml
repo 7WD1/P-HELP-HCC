@@ -7,6 +7,7 @@ data:
   target_time_col: overall_survival_months
   event_col: event
   label_col: survival_class
+  index_treatment_action_col: index_treatment_action
   surgical_strategy_col: surgical_strategy
   aetiology_col: dominant_aetiology
   curated_dim: 67
